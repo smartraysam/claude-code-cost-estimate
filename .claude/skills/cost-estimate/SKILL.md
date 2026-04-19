@@ -557,7 +557,31 @@ roi                   = (total_cost_p50 - claude_total_cost) / claude_total_cost
 
 The **reviewer-time inclusion is non-optional** — omitting it overstates ROI by 2-5×. Name the assumption explicitly: "reviewer_time = 0.5× Claude active hours (typical range 0.3-1.0×)."
 
-### 9c. State limitations loudly
+### 9c. Speed-multiplier sanity check (Copilot SPACE anchor)
+
+GitHub Copilot's 2024 randomized study (Measuring GitHub Copilot's Impact on Productivity, CACM 2024) measured a **1.55× speed multiplier** with Copilot (55% faster task completion, from baseline). Use this as the industry benchmark for honest AI speed-ups.
+
+If your computed `speed_multiplier` is:
+- **< 1.5×**: believable, maybe even conservative for Claude on greenfield code
+- **1.5×-3×**: typical for Claude Code on well-scoped tasks
+- **3×-8×**: plausible for code-heavy tasks with strong specs
+- **8×-20×**: suspicious — verify by spot-checking a sample commit
+- **> 20×**: almost certainly wrong — likely causes: hours denominator too small (sessions uncounted), gross LOC inflation (tests/generated leaked in), or bottom-up estimate over-inflated
+
+```
+if speed_multiplier > 20:
+    sanity_flag = "implausible"
+elif speed_multiplier > 8:
+    sanity_flag = "suspicious"
+else:
+    sanity_flag = "plausible"
+```
+
+When `sanity_flag != "plausible"`, the report must explicitly say: *"Speed multiplier of [X]× exceeds Copilot's published 1.55× baseline by [Y]×. Treat with skepticism — review Step 9a for measurement errors before quoting."*
+
+This prevents the most common lie people tell with cost-estimate tools: claiming a 50× speed multiplier that is actually 3× once reviewer time and uncounted sessions are included.
+
+### 9d. State limitations loudly
 
 In the report, always include:
 
