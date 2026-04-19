@@ -2,7 +2,7 @@
 
 A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that estimates the **replacement cost to rebuild** any codebase with a traditional human team — no AI, just developers, designers, PMs, and meetings.
 
-Open Claude Code in any project, run `/cost-estimate`, and get a full breakdown: P10/P50/P90 ranges, a four-way cross-check (bottom-up × COCOMO II × Function Point × LOCOMO), real Claude token cost from session logs, current market rates, realistic team costs, and external anchors from Harvard (Hoffmann-Nagle-Zhou 2024) and IFPUG (Capers Jones). Writes a machine-readable `cost-estimate.json` alongside the report.
+Open Claude Code in any project, run `/cost-estimate`, and get a full breakdown: P10/P50/P90 ranges, a four-way cross-check (bottom-up × COCOMO II × Function Point × LOCOMO), real Claude token cost from session logs, current market rates, realistic team costs, and external anchors from Harvard (Hoffmann-Nagle-Zhou 2024) and IFPUG (Capers Jones). Prints the full report to the terminal and saves a copy plus a machine-readable `cost-estimate.json` to a temp directory (never the project — safer against accidental commits).
 
 > ⚠ **Read "How to read the report" below before quoting any number.** Replacement cost to rebuild ≠ market value ≠ what it actually cost to build. Three different numbers, often orders of magnitude apart.
 
@@ -90,7 +90,15 @@ Inside Claude Code, simply run:
 /cost-estimate
 ```
 
-Claude will analyze the current project and produce a detailed cost report plus a `cost-estimate.json` artifact.
+Claude will analyze the current project and print the full report to your terminal. It also saves a Markdown copy and a machine-readable `cost-estimate.json` to a temp directory — **never to the project directory itself**, so you can't accidentally `git add` and commit a report containing rates, costs, or team numbers.
+
+Output file locations (auto-detected):
+
+- **Linux**: `/tmp/cost-estimate/<project-name>/`
+- **macOS**: `/var/folders/…/T/cost-estimate/<project-name>/` (resolved via `tempfile.gettempdir()`)
+- **Windows**: `%TEMP%\cost-estimate\<project-name>\`
+
+If you explicitly want the report in the project directory, say "write it here" — otherwise the default is always the temp dir.
 
 ## How to read the report
 

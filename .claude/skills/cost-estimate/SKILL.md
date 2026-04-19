@@ -866,9 +866,40 @@ Three things the reader should verify, with a copy-pasteable command for each:
 
 ---
 
-## Step 12: Write the machine-readable artifact
+## Step 12: Write the machine-readable artifact (to a temp directory, never the repo)
 
-Write `./cost-estimate.json`:
+**Never write output files into the user's working directory.** Someone could `git add .` and commit them by accident — reports may contain sensitive numbers (rates, Claude costs, team composition) that don't belong in the project's git history.
+
+Use a platform-appropriate temp directory, namespaced by project to avoid cross-project clobbering:
+
+```bash
+# Derive OUTDIR — works on Linux, macOS, and Windows (Git Bash / WSL / native Python)
+python3 -c "
+import os, tempfile, pathlib
+proj = pathlib.Path(os.getcwd()).name or 'unknown'
+out = pathlib.Path(tempfile.gettempdir()) / 'cost-estimate' / proj
+out.mkdir(parents=True, exist_ok=True)
+print(out)
+"
+```
+
+Typical paths produced:
+- **Linux**: `/tmp/cost-estimate/<project-name>/`
+- **macOS**: `/var/folders/…/T/cost-estimate/<project-name>/` (or `/tmp/…` if `$TMPDIR` is set)
+- **Windows**: `%TEMP%\cost-estimate\<project-name>\` (e.g. `C:\Users\<you>\AppData\Local\Temp\cost-estimate\<project-name>\`)
+
+Write two files into that directory:
+
+- `cost-estimate-report.md` — the full Markdown report from Step 11
+- `cost-estimate.json` — the machine-readable artifact below
+
+**Also print the full Markdown report to stdout (the terminal)** so the user sees it without opening any file. After printing, end with a one-line pointer to where the files were written, e.g.:
+
+> *Report also saved to `/tmp/cost-estimate/my-project/cost-estimate-report.md` and `cost-estimate.json`. Not written to the current directory (safer — won't accidentally land in a commit).*
+
+If the user explicitly asks for output in the current directory (e.g. "write it here"), honor the request, but show the *"not written to the working directory"* note without it — the default is always the temp dir.
+
+JSON artifact schema:
 
 ```json
 {
