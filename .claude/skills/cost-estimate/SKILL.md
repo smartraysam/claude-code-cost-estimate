@@ -903,7 +903,14 @@ Write two files into that directory:
 
 If the user explicitly asks for output in the current directory (e.g. "write it here"), honor the request, but show the *"not written to the working directory"* note without it — the default is always the temp dir.
 
-JSON artifact schema:
+**⚠ BOTH files go to `$OUTDIR`. Never write `./cost-estimate.json` or `./cost-estimate-report.md`.** The correct Write-tool paths are:
+
+- `$OUTDIR/cost-estimate-report.md`
+- `$OUTDIR/cost-estimate.json`
+
+…where `$OUTDIR` was derived by the Python snippet above (resolves to `/tmp/cost-estimate/<project>/` on Linux, `/var/folders/…/T/cost-estimate/<project>/` on macOS, `%TEMP%\cost-estimate\<project>\` on Windows). Never hardcode a path like `./` or `.` for either file.
+
+JSON artifact schema (this is the *content* to write to `$OUTDIR/cost-estimate.json`):
 
 ```json
 {
