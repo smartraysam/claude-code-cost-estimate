@@ -155,7 +155,33 @@ The report prints this list front and center. Don't scroll past it.
 
 ### Methodology in one paragraph
 
-LOC is treated as a proxy (corrected by quality signals, churn, and DRYness), not truth. Overheads compound multiplicatively, not additively. Rates come from WebSearch with versioned fallbacks. Claude-hour ROI uses real `~/.claude/projects/*.jsonl` token usage when available (ground-truth API cost) and git-churn session clustering when not. Every dollar figure is paired with P10/P50/P90. Every strong claim is paired with an assumption the reader can override.
+LOC* is treated as a proxy (corrected by quality signals, churn, and DRYness*), not truth. Overheads compound multiplicatively, not additively. Rates come from WebSearch with versioned fallbacks. Claude-hour ROI* uses real `~/.claude/projects/*.jsonl` token usage when available (ground-truth API cost) and git-churn session clustering when not. Every dollar figure is paired with P10/P50/P90*. Every strong claim is paired with an assumption the reader can override.
+
+## Glossary
+
+Acronyms and jargon used in this README and in the generated report:
+
+- **LOC** — *Lines of Code.* Raw source-line count, excluding comments/blanks/vendored/generated.
+- **KSLOC** — *Thousand Lines of Code* (= LOC ÷ 1000). Input unit for COCOMO II.
+- **ULOC** — *Unique Lines of Code.* Distinct lines across the codebase, used to measure DRYness.
+- **DRYness** — Ratio `ULOC / LOC`. A DRYness of 1.0 means no duplication; 0.6 means 40% of lines are copy-paste.
+- **P10 / P50 / P90** — *Percentiles.* P10 = optimistic (only 10% of scenarios come in cheaper), P50 = median, P90 = pessimistic (90% come in cheaper). Standard software-estimation banding.
+- **COCOMO II** — *COnstructive COst MOdel II* (Barry Boehm, 1995). Industry-standard parametric top-down model that converts KSLOC into person-months using scale factor `E` and an EAF.
+- **EAF** — *Effort Adjustment Factor.* COCOMO II's product of 17 effort multipliers (collapsed to 5 buckets in this skill).
+- **Function Points (FP)** — Size metric based on user-visible features, language-agnostic. "Backfiring" converts LOC → FP via the QSM language-specific ratio (C=148, Java=53, Python=21, etc.).
+- **LOCOMO** — *LLM cOst MOdel.* Counterfactual: "what would it cost an LLM to re-generate this code today?" (tokens × published API rates + human review time). Popularised by `scc`.
+- **SPACE framework** — GitHub's 2024 *Satisfaction, Performance, Activity, Communication, Efficiency* study on Copilot. Produced the peer-reviewed **1.55×** speed-multiplier baseline we sanity-check against.
+- **ROI** — *Return on Investment.* Here: `(human rebuild cost − actual Claude cost) ÷ actual Claude cost`.
+- **TCO** — *Total Cost of Ownership.* Build + 5 years of maintenance (Capers Jones data: build ≈ 40-50% of 5-year TCO).
+- **IFPUG** — *International Function Point Users Group.* Source of the function-point industry benchmarks.
+- **QSM** — *Quantitative Software Management.* Publishes the language-to-function-point conversion table backfiring relies on.
+- **PMF** — *Product-Market Fit.* The iteration that happens before a codebase even exists; excluded from replacement cost.
+- **JSONL** — *JSON Lines* (one JSON object per line). Format of Claude Code's session transcripts at `~/.claude/projects/<hash>/*.jsonl`.
+- **Max / Pro / API** — Anthropic subscription tiers. *Max* = $200/mo flat, *Pro* = $20/mo flat, *API* = pay-per-token.
+- **Opus / Sonnet / Haiku** — Claude model tiers. Each has its own per-token rate, pulled from Anthropic's published pricing.
+- **AI-authored flag** — Derived from `net_LOC / calendar_day`. Over ~2,000 LOC/day is physically impossible for a solo human, so the skill reframes the estimate as a counterfactual ("what humans *would* have cost") rather than elapsed spend.
+- **Harvard supply-side anchor** — From Hoffmann, Nagle, Zhou (SSRN 4693148, 2024). Supply-side value of OSS-like codebases averages ~**3.5×** a naive `LOC × $0.15` calculation. Used as a reality check on our P50.
+- **Replacement cost to rebuild** — What it would cost a human team to recreate the codebase today given specs. **Not** market value, **not** what it actually cost to build, **not** TCO.
 
 ## Credit
 
