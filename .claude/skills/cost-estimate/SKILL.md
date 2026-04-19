@@ -249,6 +249,49 @@ Compare COCOMO to Step 3:
 
 ---
 
+## Step 4a: Function Point backfiring (fourth cross-check)
+
+Function Points (FP) size software by user-visible functionality, independent of programming language. *Backfiring* reverses the calculation: convert LOC → FP using QSM's language-specific ratio, then apply an FP-per-hour productivity to get hours.
+
+```
+LOC_per_FP        # language-specific (QSM table)
+Function_Points   = KSLOC × 1000 / LOC_per_FP
+hours_per_FP      = 8-12 (industry average; domain-adjusted below)
+FP_hours          = Function_Points × hours_per_FP
+```
+
+**QSM language conversion table** (abbreviated — see qsm.com/resources/function-point-languages-table for full list):
+
+| Language | LOC per FP | Notes |
+|---|---|---|
+| Assembly | 320 | |
+| C | 148 | |
+| C++ | 59 | |
+| C# | 59 | |
+| Java | 53 | |
+| Go | 38 | modern, concise |
+| JavaScript | 47 | |
+| TypeScript | 43 | types compress some |
+| Python | 21 | very expressive |
+| Ruby | 25 | |
+| Rust | 39 | expressive + safe |
+| Swift | 38 | |
+| Kotlin | 43 | |
+| SQL | 13 | declarative |
+| HTML/CSS (treated as FP proxy) | 34 | |
+
+**Hours-per-FP by domain**:
+- Data entry / simple CRUD: 6-8 hrs/FP
+- Typical business app: 8-12 hrs/FP
+- Real-time / embedded: 12-18 hrs/FP
+- Systems / safety-critical: 15-25 hrs/FP
+
+Backfiring gives a **fourth independent number**. Convert FP_hours to P10/P50/P90 by varying `hours_per_FP` at the bracket ends.
+
+**Why this helps**: COCOMO anchors on LOC with scale drivers; Function Points anchor on *user-facing features*. Disagreement between the two reveals whether the codebase has lots of internal plumbing (low FP per LOC) or lots of user-facing features (high FP per LOC) — useful diagnostic information for the spot-check.
+
+---
+
 ## Step 4b: LOCOMO — LLM-regeneration cost (counterfactual)
 
 COCOMO answers "what did humans cost to build this?". LOCOMO (popularised by `scc`) answers the counterfactual: **"what would it cost an LLM to re-generate this from spec today?"** — a useful floor for Claude-ROI discussions.
@@ -692,8 +735,10 @@ Write `./cost-estimate.json`:
     "overhead_multiplier": 1.0,
     "total_hours": { "p10": 0, "p50": 0, "p90": 0 },
     "cocomo_ii_hours": 0,
+    "function_point_count": 0,
+    "function_point_hours": 0,
     "divergence_pct_bottom_up_vs_cocomo": 0.0,
-    "three_way_agreement": "high|medium|low"
+    "agreement": "high|medium|low"
   },
   "locomo": {
     "regen_tokens": 0,
