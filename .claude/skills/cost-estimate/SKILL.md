@@ -169,7 +169,26 @@ Record:
 | `commit_count` < 10 with >5k LOC | Likely a one-shot import; LOC may overstate bespoke work |
 | `project_duration_days` short vs LOC | Heavy AI/automation assist — flag for ROI step |
 
-### 2c. Process signals cross-check
+### 2c. AI-authored detector
+
+When net LOC added per calendar day is impossibly high, the project was written with heavy AI assistance. This radically changes how to *interpret* the human-cost estimate:
+
+```
+loc_per_day = net_adds / max(project_duration_days, 1)
+```
+
+| `loc_per_day` | Interpretation | Effect on report |
+|---|---|---|
+| < 100 | Normal human pace | No flag |
+| 100-500 | Productive / small team | No flag |
+| 500-2000 | Likely AI-assisted | Flag: "human-cost is a counterfactual, not elapsed time" |
+| 2000+ | Clearly AI-assisted / one-shot import | Flag strongly; Claude ROI section leads the report |
+
+**Crucial distinction**: when AI-authored, the bottom-up / COCOMO / FP numbers are **hypothetical human rebuild costs**, not what the project took in calendar time. The report must explicitly say: *"This codebase was built in [X] calendar days with AI assistance. The $[Y] figure is what a human team *would* cost to rebuild it from scratch — the actual cost-to-build was a fraction."*
+
+Without this framing, readers mistake the cost estimate for elapsed spend, generating either false shock ("I didn't pay $500k!") or false precision ("we saved exactly $Y"). Frame it correctly.
+
+### 2d. Process signals cross-check
 
 A standalone "process-only" sanity estimate:
 
@@ -728,7 +747,9 @@ Write `./cost-estimate.json`:
     "gross_dels": 0,
     "net_adds": 0,
     "churn_ratio": 0.0,
-    "process_only_hours_estimate": 0
+    "process_only_hours_estimate": 0,
+    "loc_per_day": 0,
+    "ai_authored_flag": "no|suspected|clear"
   },
   "engineering": {
     "base_coding_hours": { "p10": 0, "p50": 0, "p90": 0 },
