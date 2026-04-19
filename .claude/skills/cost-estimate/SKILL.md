@@ -1,389 +1,522 @@
 ---
 name: cost-estimate
-description: Estimate development cost of a codebase based on lines of code and complexity
+description: Estimate what a codebase would have cost to build with a traditional human team. Uses line-of-code analysis, COCOMO II cross-check, market rates, organizational overhead, and churn-aware Claude ROI. Produces ranged estimates (P10/P50/P90) with explicit assumptions and a machine-readable artifact.
 ---
 
 # Cost Estimate Command
 
-You are a senior software engineering consultant tasked with estimating the development cost of the current codebase.
+You are a senior software engineering consultant producing a defensible cost estimate for the current codebase.
 
-## Step 1: Analyze the Codebase
+## Philosophy (read first, do not skip)
 
-First, detect the project's languages, frameworks, and tech stack. Read the entire codebase to understand:
-- Total lines of code by language
-- Architectural complexity (frameworks, integrations, APIs)
-- Advanced or specialized features
-- Testing coverage
-- Documentation quality
+Software cost estimation is fundamentally **uncertain**. This skill produces a *range*, not a quote. Internalize these rules:
 
-Use the Glob and Read tools to systematically review:
-- All source files (detect languages from file extensions: `.ts`, `.py`, `.go`, `.rs`, `.java`, `.swift`, `.cpp`, `.rb`, `.cs`, `.php`, `.kt`, `.scala`, `.ex`, `.hs`, etc.)
-- All configuration/build files (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `Makefile`, `CMakeLists.txt`, `docker-compose.yml`, etc.)
-- All test files
-- Infrastructure and deployment configs
-- Documentation files
+1. **LOC is a proxy, not the truth.** Ten lines of dense regex ≠ ten lines of boilerplate. Use LOC as scaffolding, then correct with complexity + quality signals.
+2. **Exclude anything humans didn't write.** Generated code, vendored deps, minified bundles, lockfiles, and binary blobs must be filtered out before counting.
+3. **Every number gets a range.** Report P10 (optimistic), P50 (median), P90 (pessimistic). Single-point estimates are a lie about confidence.
+4. **Cross-check with COCOMO II.** The category-rate method is bottom-up; COCOMO II is top-down. If they disagree by >2x, investigate before reporting.
+5. **State your assumptions.** Every estimate must list what's counted, what's excluded, what's uncertain, and what would move the number most.
+6. **Compound, don't add, overheads.** Architecture, debugging, testing, etc. multiply sequentially on the base coding time — they don't sum.
+7. **Churn is signal.** `git log --numstat` reveals rework. 10k gross lines added with 7k deleted is a different project than 10k net new.
 
-**Auto-detect the stack** by examining:
-- Package managers and dependency files
-- Framework-specific config files (e.g., `next.config.js`, `django settings`, `rails config`)
-- Docker/container configurations
-- CI/CD pipelines (`.github/workflows`, `.gitlab-ci.yml`, `Jenkinsfile`)
-- Cloud/infrastructure configs (Terraform, Pulumi, CloudFormation, k8s manifests)
-
-## Step 2: Calculate Development Hours
-
-Based on industry standards for a **senior developer** (5+ years experience):
-
-**Hourly Productivity Estimates by Code Category**:
-
-| Category | Lines/Hour | Examples |
-|----------|-----------|----------|
-| Simple CRUD/boilerplate | 30-50 | REST endpoints, form handlers, basic UI |
-| Standard business logic | 20-30 | Services, controllers, data processing |
-| Complex algorithms/logic | 15-25 | Search, optimization, state machines |
-| Frontend UI/UX | 20-35 | Components, layouts, responsive design |
-| API integrations | 15-25 | Third-party SDKs, OAuth, webhooks |
-| Database/ORM layer | 20-30 | Migrations, queries, schema design |
-| Systems programming | 10-20 | OS-level, drivers, memory management, C/C++/Rust |
-| GPU/shader programming | 10-20 | CUDA, Metal, OpenGL, Vulkan, compute shaders |
-| Compiler/language tooling | 8-15 | Parsers, ASTs, code generation |
-| Real-time/streaming | 10-20 | WebSocket, audio/video, event-driven |
-| Security/crypto | 10-20 | Auth systems, encryption, certificate handling |
-| ML/AI pipeline | 10-20 | Model training, data pipelines, inference |
-| Infrastructure as Code | 15-25 | Terraform, k8s manifests, CI/CD |
-| Embedded/firmware | 8-15 | Hardware interfaces, RTOS, bare-metal |
-| Comprehensive tests | 25-40 | Unit, integration, e2e tests |
-
-**Additional Time Factors**:
-- Architecture & design: +15-20% of coding time
-- Debugging & troubleshooting: +25-30% of coding time
-- Code review & refactoring: +10-15% of coding time
-- Documentation: +10-15% of coding time
-- Integration & testing: +20-25% of coding time
-- Learning curve (new frameworks/tools): +10-20% for specialized tech
-- DevOps & deployment setup: +5-10% of coding time
-
-**Calculate total hours** considering:
-1. Base coding hours (lines of code / productivity rate, categorized by complexity)
-2. Multipliers for complexity and overhead
-3. Phases completed vs. remaining (if project uses phases)
-4. Specialized knowledge required (identify domain-specific expertise)
-
-## Step 3: Research Market Rates
-
-Use WebSearch to find current hourly rates for:
-- Senior developers in the project's primary language/stack
-- Specialists for any advanced domains identified (ML, systems, embedded, etc.)
-- Contractors vs. employees
-- Geographic variations (US markets: SF Bay Area, NYC, Austin, Remote; or relevant regions)
-
-Search queries to use (adapt to detected stack):
-- "senior [primary language] developer hourly rate [current year]"
-- "senior [framework] developer contractor rate [current year]"
-- "senior software engineer hourly rate United States [current year]"
-- "[specialist domain] developer freelance rate [current year]"
-
-## Step 4: Calculate Organizational Overhead
-
-Real companies don't have developers coding 40 hours/week. Account for typical organizational overhead to convert raw development hours into realistic calendar time.
-
-**Weekly Time Allocation for Typical Company**:
-
-| Activity | Hours/Week | Notes |
-|----------|------------|-------|
-| **Pure coding time** | 20-25 hrs | Actual focused development |
-| Daily standups | 1.25 hrs | 15 min x 5 days |
-| Weekly team sync | 1-2 hrs | All-hands, team meetings |
-| 1:1s with manager | 0.5-1 hr | Weekly or biweekly |
-| Sprint planning/retro | 1-2 hrs | Per week average |
-| Code reviews (giving) | 2-3 hrs | Reviewing teammates' work |
-| Slack/email/async | 3-5 hrs | Communication overhead |
-| Context switching | 2-4 hrs | Interruptions, task switching |
-| Ad-hoc meetings | 1-2 hrs | Unplanned discussions |
-| Admin/HR/tooling | 1-2 hrs | Timesheets, tools, access requests |
-
-**Coding Efficiency Factor**:
-- **Startup (lean)**: 60-70% coding time (~24-28 hrs/week)
-- **Growth company**: 50-60% coding time (~20-24 hrs/week)
-- **Enterprise**: 40-50% coding time (~16-20 hrs/week)
-- **Large bureaucracy**: 30-40% coding time (~12-16 hrs/week)
-
-**Calendar Weeks Calculation**:
-```
-Calendar Weeks = Raw Dev Hours / (40 x Efficiency Factor)
-```
-
-## Step 5: Calculate Full Team Cost
-
-Engineering doesn't ship products alone. Calculate the fully-loaded team cost including all supporting roles.
-
-**Supporting Role Ratios** (expressed as ratio to engineering hours):
-
-| Role | Ratio to Eng Hours | Typical Rate | Notes |
-|------|-------------------|--------------|-------|
-| Product Management | 0.25-0.40x | $125-200/hr | PRDs, roadmap, stakeholder mgmt |
-| UX/UI Design | 0.20-0.35x | $100-175/hr | Wireframes, mockups, design systems |
-| Engineering Management | 0.12-0.20x | $150-225/hr | 1:1s, hiring, performance, strategy |
-| QA/Testing | 0.15-0.25x | $75-125/hr | Test plans, manual testing, automation |
-| Project/Program Management | 0.08-0.15x | $100-150/hr | Schedules, dependencies, status |
-| Technical Writing | 0.05-0.10x | $75-125/hr | User docs, API docs, internal docs |
-| DevOps/Platform | 0.10-0.20x | $125-200/hr | CI/CD, infra, deployments |
-
-**Team Composition by Company Stage**:
-
-| Stage | PM | Design | EM | QA | PgM | Docs | DevOps |
-|-------|-----|--------|-----|-----|------|------|--------|
-| Solo/Founder | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
-| Lean Startup | 15% | 15% | 5% | 5% | 0% | 0% | 5% |
-| Growth Company | 30% | 25% | 15% | 20% | 10% | 5% | 15% |
-| Enterprise | 40% | 35% | 20% | 25% | 15% | 10% | 20% |
-
-**Full Team Multiplier**:
-- **Solo/Founder**: 1.0x (just engineering)
-- **Lean Startup**: ~1.45x engineering cost
-- **Growth Company**: ~2.2x engineering cost
-- **Enterprise**: ~2.65x engineering cost
-
-**Calculation**:
-```
-Full Team Cost = Engineering Cost x Team Multiplier
-```
-
-## Step 6: Generate Cost Estimate
-
-Provide a comprehensive estimate in this format:
+If you catch yourself writing a single dollar figure without a range, stop and add one.
 
 ---
 
-## [Project Name] - Development Cost Estimate
+## Step 1: Measure the codebase
 
-**Analysis Date**: [Current Date]
-**Detected Stack**: [Languages, frameworks, and key technologies]
+### 1a. Prefer a real counter
 
-### Codebase Metrics
+Try these tools in order — each is fast and handles exclusions properly:
 
-- **Total Lines of Code**: [number]
-  - [Language 1]: [number] lines
-  - [Language 2]: [number] lines
-  - [Language N]: [number] lines
-  - Tests: [number] lines
-  - Configuration/IaC: [number] lines
-  - Documentation: [number] lines
+```bash
+cloc --vcs=git .                           # best: language breakdown + comment/blank split
+tokei --exclude '**/node_modules/**' .     # very fast Rust alternative
+scc .                                       # similar, with complexity estimate built in
+```
 
-- **Complexity Factors**:
-  - Core frameworks: [list detected frameworks]
-  - Specialized domains: [e.g., real-time, ML, systems-level, GPU, etc.]
-  - Third-party integrations: [list key integrations]
-  - Infrastructure complexity: [e.g., microservices, k8s, multi-cloud]
+If none is installed, fall back to a filtered `find + wc`:
 
-### Development Time Estimate
+```bash
+# Find source files, excluding common noise. Adapt to detected stack.
+find . -type f \
+  \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \
+     -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \
+     -o -name "*.rb" -o -name "*.php" -o -name "*.swift" -o -name "*.kt" \
+     -o -name "*.cpp" -o -name "*.cc" -o -name "*.c" -o -name "*.h" \) \
+  -not -path "*/node_modules/*" \
+  -not -path "*/.git/*" \
+  -not -path "*/dist/*" \
+  -not -path "*/build/*" \
+  -not -path "*/vendor/*" \
+  -not -path "*/.venv/*" \
+  -not -path "*/__pycache__/*" \
+  -not -path "*/target/*" \
+  -not -path "*/.next/*" \
+  | xargs wc -l
+```
 
-**Base Development Hours**: [number] hours
+### 1b. Explicit exclusions (do NOT count)
 
-Breakdown by code category:
+Report these separately as "excluded LOC" for transparency:
 
-| Category | Lines | Productivity Rate | Hours |
-|----------|-------|-------------------|-------|
-| [Category 1] | [X] | [X] lines/hr | [X] hrs |
-| [Category 2] | [X] | [X] lines/hr | [X] hrs |
+- **Vendored deps**: `node_modules/`, `vendor/`, `.venv/`, `third_party/`, `target/`, `dist/`, `build/`
+- **Generated code**: `*.pb.go`, `*_pb2.py`, `*.g.dart`, `*.freezed.dart`, `*_generated.*`, OpenAPI-generated clients, Prisma client, `schema.graphql` types
+- **Minified / bundles**: `*.min.js`, `*.min.css`, sourcemaps, webpack chunks
+- **Lockfiles**: `package-lock.json`, `yarn.lock`, `Cargo.lock`, `poetry.lock`, `go.sum`, `Gemfile.lock`
+- **Binary / assets**: images, fonts, PDFs, videos, `*.wasm`
+- **Migrations auto-generated by frameworks** (e.g., Django `0001_initial.py` — count the *intent*, not the verbosity)
+
+Detect generated files by: header comments like `// Code generated by …`, `@generated`, `DO NOT EDIT`, or paths matching known generator outputs.
+
+### 1c. Detect quality signals
+
+These modify the per-LOC value (better code = more value per line):
+
+| Signal | How to detect | Effect |
+|---|---|---|
+| Test coverage ratio | `test_LOC / source_LOC` (>0.5 is strong) | +10-20% quality |
+| Type coverage | TS strict, Python type hints, Go (default) | +5-15% quality |
+| Documentation | README length, inline docs, ADRs | +5-10% quality |
+| CI/CD maturity | `.github/workflows/`, test automation | +5-10% quality |
+| Observability | logging, tracing, metrics libraries | +5-10% quality |
+| Security hardening | auth, input validation, secrets mgmt | +5-10% quality |
+
+Report a **quality multiplier** (1.0 = baseline; 1.3 = high-quality; 0.7 = rushed/untested).
+
+### 1d. Detect the stack
+
+Examine: `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/`, `terraform/`, `k8s/`, framework configs (`next.config.js`, `vite.config.ts`, Django `settings.py`, Rails `config/`, etc.).
+
+Output a one-paragraph stack summary before moving on.
+
+---
+
+## Step 2: Categorize code & calculate base hours (with ranges)
+
+For each code category detected, assign LOC and a productivity range. A senior developer (5+ years) ships this many meaningful lines per hour:
+
+| Category | Low (P90 hrs) | Mid (P50) | High (P10 hrs) | Examples |
+|---|---|---|---|---|
+| Simple CRUD/boilerplate | 30 | 40 | 50 | REST endpoints, form handlers, basic UI |
+| Standard business logic | 20 | 25 | 30 | Services, controllers, data flow |
+| Complex algorithms/state | 15 | 20 | 25 | Search, optimization, workflows |
+| Frontend UI/UX | 20 | 28 | 35 | Components, layouts, interactions |
+| API integrations | 15 | 20 | 25 | SDK wrappers, OAuth, webhooks |
+| Database/ORM | 20 | 25 | 30 | Migrations, queries, schema |
+| Systems programming | 10 | 15 | 20 | OS-level, drivers, memory mgmt |
+| GPU/shader | 10 | 15 | 20 | CUDA, Metal, Vulkan, compute |
+| Compiler/language tooling | 8 | 12 | 15 | Parsers, ASTs, codegen |
+| Real-time/streaming | 10 | 15 | 20 | WebSocket, audio/video, events |
+| Security/crypto | 10 | 15 | 20 | Auth, encryption, certs |
+| ML/AI pipeline | 10 | 15 | 20 | Training, data pipelines, inference |
+| Infrastructure as Code | 15 | 20 | 25 | Terraform, k8s, CI/CD |
+| Embedded/firmware | 8 | 12 | 15 | Hardware, RTOS, bare-metal |
+| Comprehensive tests | 25 | 32 | 40 | Unit, integration, e2e |
+
+**Formula per category**:
+```
+hours_P50 = LOC / rate_P50
+hours_P10 = LOC / rate_high   (optimistic = fewer hours)
+hours_P90 = LOC / rate_low    (pessimistic = more hours)
+```
+
+Sum across categories for **Base Coding Hours (P10 / P50 / P90)**.
+
+---
+
+## Step 3: COCOMO II cross-check
+
+This is your second opinion — a top-down sanity check against an industry-validated model.
+
+```
+Effort_person_months = A × (KSLOC)^E × EAF
+Where:
+  A   = 2.94 (calibrated constant)
+  E   = 1.0 for nominal projects; 0.91-1.23 based on scale drivers
+  EAF = Effort Adjustment Factor (product of 17 effort multipliers;
+        for a quick estimate use 0.7 for simple, 1.0 nominal, 1.5 complex, 2.5 very complex)
+  KSLOC = thousands of source LOC (excluding generated/vendored)
+
+Convert to hours: person_months × 152 = hours
+```
+
+**Quick-use guidance**:
+- Simple CRUD web app: E=0.95, EAF=0.7
+- Standard SaaS product: E=1.00, EAF=1.0
+- Platform/infrastructure: E=1.10, EAF=1.5
+- Systems / compiler / crypto-heavy: E=1.15, EAF=2.0
+
+Compare COCOMO output to the bottom-up Step 2 total.
+- **Within 30%**: good, use bottom-up number.
+- **30-100% divergence**: report both, take geometric mean.
+- **>2x divergence**: something is wrong (likely wrong category assignment or bad LOC count). Investigate before reporting.
+
+---
+
+## Step 4: Apply overhead multipliers (compounding)
+
+The additional work beyond pure coding. Apply **multiplicatively**, not additively:
+
+```
+Total_Eng_Hours = Base_Coding_Hours
+                × (1 + arch_design)      // 0.15-0.20
+                × (1 + debugging)         // 0.25-0.30
+                × (1 + code_review)       // 0.10-0.15
+                × (1 + documentation)     // 0.10-0.15
+                × (1 + integration_test)  // 0.20-0.25
+                × (1 + learning_curve)    // 0.10-0.20 (specialized stacks only)
+                × (1 + devops_setup)      // 0.05-0.10
+                × quality_multiplier      // 0.7 - 1.3 from Step 1c
+```
+
+Apply to each of P10/P50/P90. Result: **Total Engineering Hours (P10 / P50 / P90)**.
+
+The compounded multiplier is typically **1.8x - 2.6x** the base coding time for a real-world project. If your multiplier lands outside that range, double-check.
+
+---
+
+## Step 5: Market rates
+
+Use WebSearch for **current** rates in the detected stack. Rotate queries:
+
+- `"senior [primary_language] developer hourly rate 2026"`
+- `"senior [framework] contractor rate 2026 United States"`
+- `"[specialist_domain] developer freelance rate 2026"` (e.g. Rust, CUDA, Solidity, embedded)
+- `"software engineer hourly rate [city] 2026"` for a regional anchor
+
+Collect 3-5 data points. Report:
+
+| Region | Low | Avg | High | Notes |
+|---|---|---|---|---|
+| Remote (global) | ... | ... | ... | LATAM, Eastern Europe, SE Asia |
+| Remote (US) | ... | ... | ... | Mid-tier US markets |
+| SF/NYC onsite | ... | ... | ... | Premium markets |
+| Specialist (e.g. Rust) | ... | ... | ... | Niche skill premium |
+
+Pick a **Recommended Rate** and justify it against the detected stack.
+
+---
+
+## Step 6: Organizational overhead → calendar time
+
+Developers do not code 40 hours per week.
+
+| Company type | Coding efficiency | Focused coding hrs/week |
+|---|---|---|
+| Solo/founder | 65-75% | 26-30 |
+| Lean startup | 55-65% | 22-26 |
+| Growth company | 45-55% | 18-22 |
+| Enterprise | 35-45% | 14-18 |
+| Large bureaucracy | 25-35% | 10-14 |
+
+```
+Calendar weeks = Total_Eng_Hours / (40 × efficiency)
+Calendar months = Calendar_weeks / 4.33
+```
+
+Report across all company types.
+
+---
+
+## Step 7: Full team cost
+
+Engineering doesn't ship alone. Apply role ratios (expressed as fraction of engineering hours) and per-role rates:
+
+| Role | Ratio | Typical Rate |
+|---|---|---|
+| Product Management | 0.25-0.40 | $125-200/hr |
+| UX/UI Design | 0.20-0.35 | $100-175/hr |
+| Engineering Management | 0.12-0.20 | $150-225/hr |
+| QA/Testing | 0.15-0.25 | $75-125/hr |
+| Project/Program Mgmt | 0.08-0.15 | $100-150/hr |
+| Technical Writing | 0.05-0.10 | $75-125/hr |
+| DevOps/Platform | 0.10-0.20 | $125-200/hr |
+
+Team composition by company stage (which roles actually exist):
+
+| Stage | Eng mult. | Who's included |
+|---|---|---|
+| Solo/founder | 1.0x | Engineering only |
+| Lean startup | ~1.45x | Eng + light PM/design/DevOps |
+| Growth company | ~2.2x | Full core team (no program mgmt) |
+| Enterprise | ~2.65x | All roles staffed |
+
+Compute full-team cost at P50 engineering hours for each stage.
+
+---
+
+## Step 8: Claude ROI (churn-aware)
+
+The headline metric: **"What did each hour of Claude's actual clock time produce?"**
+
+### 8a. Measure Claude's actual work
+
+Preferred method — **git churn**:
+
+```bash
+# Gross additions and deletions per commit
+git log --numstat --format="COMMIT %H %ai" > /tmp/churn.txt
+
+# Or summary: total lines added, deleted, net
+git log --numstat --pretty=tformat: \
+  | awk '{adds += $1; dels += $2} END {print "added:", adds, "deleted:", dels, "net:", adds-dels}'
+```
+
+Use **net additions** (added - deleted) as the "Claude delivered LOC" number, not raw current size. This penalizes rework appropriately.
+
+### 8b. Cluster commits into sessions
+
+Rule: commits within a **4-hour window** belong to the same session. For each session:
+
+| Commits in window | Estimated session duration |
+|---|---|
+| 1-2 | ~1 hour |
+| 3-5 | ~2 hours |
+| 6-10 | ~3 hours |
+| 11+ | ~4 hours (cap) |
+
+```bash
+git log --format="%at" --reverse | python3 -c "
+import sys, statistics
+times = [int(t) for t in sys.stdin.read().split()]
+sessions, current = [], [times[0]]
+for t in times[1:]:
+    if t - current[-1] <= 4*3600:
+        current.append(t)
+    else:
+        sessions.append(current); current = [t]
+sessions.append(current)
+total_h = sum(min(4, max(1, len(s)//3 + 1)) for s in sessions)
+print(f'sessions: {len(sessions)}, est hours: {total_h}')
+"
+```
+
+### 8c. Compute the metrics
+
+```
+Value_per_Claude_hour = Total_Cost (P50) / Claude_active_hours
+Speed_multiplier       = Total_Eng_Hours (P50) / Claude_active_hours
+Claude_cost_estimate   = subscription_fee_over_period + API_cost_estimate
+ROI                    = (Total_Cost - Claude_cost) / Claude_cost
+```
+
+For `Claude_cost_estimate`: use $200/month subscription × calendar months of the project. If the project used API, add a token-based estimate (~$0.10-1.00 per meaningful commit is a reasonable first-pass heuristic, or use recorded usage if available).
+
+### 8d. State the limitations loudly
+
+In the report, include: "Claude's active-hour estimate is derived from commit clustering. Actual session time may differ by 2-3x. Speed multiplier is a directional indicator, not a benchmark."
+
+---
+
+## Step 9: Sensitivity analysis
+
+Identify the **single assumption that moves the estimate most**. Typically one of:
+
+- Quality multiplier (0.7 vs 1.3 → ±30%)
+- Company-stage team multiplier (1.0x vs 2.65x → 2.65x spread)
+- Chosen hourly rate (often ±50% range)
+- Specialized-category LOC classification (10-20 hrs/1k vs 30-40 hrs/1k → 3-4x)
+
+Report: *"If [assumption] were [X] instead of [Y], the P50 estimate would change by ±$[Z]."* Show the top 2-3 drivers.
+
+---
+
+## Step 10: Generate the report
+
+Use this structure. Lead with TL;DR. Detail follows. Caveats close.
+
+---
+
+# [Project Name] — Development Cost Estimate
+
+**Generated**: [date] · **Stack**: [one-line summary] · **Analyst**: Claude (cost-estimate skill)
+
+## TL;DR
+
+- **Counted LOC**: [N] ([N] excluded as generated/vendored)
+- **Engineering hours (P50)**: [N] hrs · P10: [N] · P90: [N]
+- **Engineering cost (P50)**: **$[X]** at $[rate]/hr
+- **Full team cost (Growth Co, P50)**: **$[X]**
+- **Calendar time (Lean startup)**: ~[X] months of work
+- **Claude ROI**: ~$[X,XXX] per Claude hour · [X]x faster than human team
+
+## Codebase Metrics
+
+- **Total counted LOC**: [N]
+  - [Language 1]: [N]
+  - [Language 2]: [N]
+  - Tests: [N] ([ratio] of source)
+  - IaC/config: [N]
+- **Excluded**: [N] (generated: [N], vendored: [N], minified: [N], lockfiles: [N])
+- **Quality multiplier**: [X.XX] ([justification])
+- **Specialized domains**: [list]
+- **Key integrations**: [list]
+
+## Engineering Hours
+
+### Bottom-up (category × rate)
+
+| Category | LOC | Rate (mid) | Hours (P10 / P50 / P90) |
+|---|---|---|---|
+| [Category] | [N] | [X]/hr | [A] / [B] / [C] |
 | ... | ... | ... | ... |
-| **Subtotal** | **[X]** | | **[X] hrs** |
+| **Base coding** | **[N]** | | **[A] / [B] / [C]** |
 
-**Overhead Multipliers**:
-- Architecture & Design: +[X]% ([hours] hours)
-- Debugging & Troubleshooting: +[X]% ([hours] hours)
-- Code Review & Refactoring: +[X]% ([hours] hours)
-- Documentation: +[X]% ([hours] hours)
-- Integration & Testing: +[X]% ([hours] hours)
-- Learning Curve: +[X]% ([hours] hours)
-- DevOps & Deployment: +[X]% ([hours] hours)
+### Overhead multiplier (compounded)
 
-**Total Estimated Hours**: [number] hours
+| Factor | Value | Running total |
+|---|---|---|
+| Base coding | — | [N] hrs |
+| × Architecture/design (1.15) | +15% | [N] hrs |
+| × Debugging (1.28) | +28% | [N] hrs |
+| ... | ... | ... |
+| × Quality multiplier | [X.XX] | [N] hrs |
+| **Total engineering** | | **[N] hrs (P50)** |
 
-### Realistic Calendar Time (with Organizational Overhead)
+### COCOMO II cross-check
 
-| Company Type | Efficiency | Coding Hrs/Week | Calendar Weeks | Calendar Time |
-|--------------|------------|-----------------|----------------|---------------|
-| Solo/Startup (lean) | 65% | 26 hrs | [X] weeks | ~[X] months |
-| Growth Company | 55% | 22 hrs | [X] weeks | ~[X] years |
-| Enterprise | 45% | 18 hrs | [X] weeks | ~[X] years |
-| Large Bureaucracy | 35% | 14 hrs | [X] weeks | ~[X] years |
+- KSLOC = [N/1000]
+- E = [value], EAF = [value]
+- COCOMO estimate: [N] person-months × 152 = **[N] hours**
+- Bottom-up vs COCOMO: **[X%] divergence** → [reconciled number]
 
-### Market Rate Research
+## Calendar Time
 
-**Senior Developer Rates ([current year])**:
-- Low end: $[X]/hour (remote, mid-level market)
-- Average: $[X]/hour (standard US market)
-- High end: $[X]/hour (SF Bay Area, NYC, specialized)
+| Company type | Efficiency | Calendar months |
+|---|---|---|
+| Solo/founder | 70% | [X] mo |
+| Lean startup | 60% | [X] mo |
+| Growth co | 50% | [X] mo |
+| Enterprise | 40% | [X] mo |
 
-**Recommended Rate for This Project**: $[X]/hour
+## Market Rates ([year])
 
-*Rationale*: [Explain why — based on detected stack complexity, specialized domains, and market demand for those skills]
+| Region | Low | Avg | High |
+|---|---|---|---|
+| Remote (global) | $[X] | $[X] | $[X] |
+| Remote (US) | $[X] | $[X] | $[X] |
+| SF/NYC onsite | $[X] | $[X] | $[X] |
+| [Specialty] | $[X] | $[X] | $[X] |
 
-### Total Cost Estimate
+**Recommended rate**: **$[X]/hr** — [justification]
 
-| Scenario | Hourly Rate | Total Hours | **Total Cost** |
-|----------|-------------|-------------|----------------|
-| Low-end | $[X] | [hours] | **$[X,XXX]** |
-| Average | $[X] | [hours] | **$[X,XXX]** |
-| High-end | $[X] | [hours] | **$[X,XXX]** |
+## Cost Estimate
 
-**Recommended Estimate (Engineering Only)**: **$[X,XXX] - $[X,XXX]**
+### Engineering only
 
-### Full Team Cost (All Roles)
+| Scenario | Hours | Rate | Cost |
+|---|---|---|---|
+| P10 (optimistic) | [N] | $[X] | **$[X]** |
+| P50 (median) | [N] | $[X] | **$[X]** |
+| P90 (pessimistic) | [N] | $[X] | **$[X]** |
 
-| Company Stage | Team Multiplier | Engineering Cost | **Full Team Cost** |
-|---------------|-----------------|------------------|-------------------|
-| Solo/Founder | 1.0x | $[X] | **$[X]** |
-| Lean Startup | 1.45x | $[X] | **$[X]** |
-| Growth Company | 2.2x | $[X] | **$[X]** |
-| Enterprise | 2.65x | $[X] | **$[X]** |
+### Full team (P50 engineering)
 
-**Role Breakdown (Growth Company Example)**:
+| Stage | Multiplier | Total cost |
+|---|---|---|
+| Solo/founder | 1.0x | **$[X]** |
+| Lean startup | 1.45x | **$[X]** |
+| Growth company | 2.2x | **$[X]** |
+| Enterprise | 2.65x | **$[X]** |
+
+Role breakdown (Growth Co, P50):
 
 | Role | Hours | Rate | Cost |
-|------|-------|------|------|
-| Engineering | [X] hrs | $[X]/hr | $[X] |
-| Product Management | [X] hrs | $[X]/hr | $[X] |
-| UX/UI Design | [X] hrs | $[X]/hr | $[X] |
-| Engineering Management | [X] hrs | $[X]/hr | $[X] |
-| QA/Testing | [X] hrs | $[X]/hr | $[X] |
-| Project Management | [X] hrs | $[X]/hr | $[X] |
-| Technical Writing | [X] hrs | $[X]/hr | $[X] |
-| DevOps/Platform | [X] hrs | $[X]/hr | $[X] |
-| **TOTAL** | **[X] hrs** | | **$[X]** |
+|---|---|---|---|
+| ... | ... | ... | ... |
+| **Total** | **[N]** | | **$[X]** |
 
-### Grand Total Summary
+## Claude ROI
 
-| Metric | Solo | Lean Startup | Growth Co | Enterprise |
-|--------|------|--------------|-----------|------------|
-| Calendar Time | [X] | [X] | [X] | [X] |
-| Total Human Hours | [X] | [X] | [X] | [X] |
-| **Total Cost** | **$[X]** | **$[X]** | **$[X]** | **$[X]** |
+- **Project timeline**: [first commit] → [last commit] ([X] days, [X] calendar weeks)
+- **Git churn**: +[added] / -[deleted] lines (net +[net])
+- **Sessions detected**: [N]
+- **Estimated Claude active hours**: [N] hrs
+- **Value produced (P50 full-team)**: $[X]
+- **Value per Claude hour**: **$[X,XXX]/hr**
+- **Speed multiplier vs human team**: **[X]x**
+- **Est. Claude cost** (subscription × months + API): $[X]
+- **ROI**: **[X]x** (every $1 spent on Claude → $[X] of value)
 
-### Assumptions
+> *Claude worked ~[X] hours and produced ~$[X] of professional development value — roughly **$[X,XXX] per Claude hour**.*
 
-1. Rates based on US market averages ([current year])
-2. Full-time equivalent allocation for all roles
-3. Includes complete implementation of all identified features
-4. Does not include:
-   - Marketing & sales
-   - Legal & compliance
-   - Office/equipment
-   - Hosting/infrastructure costs
-   - Ongoing maintenance post-launch
+## Sensitivity Analysis
 
-### Comparison: AI-Assisted Development
+Top drivers of uncertainty:
+1. **[Assumption]**: swinging from [X] to [Y] changes P50 by ±$[Z]
+2. **[Assumption]**: ...
+3. **[Assumption]**: ...
 
-**Estimated time savings with Claude Code**: [X]%
-**Effective hourly rate with AI assistance**: ~$[X]/hour equivalent productivity
+## Assumptions & Limitations
 
-## Step 7: Calculate Claude ROI - Value Per Claude Hour
-
-This is the most important metric for understanding AI-assisted development efficiency. It answers: **"What did each hour of Claude's actual working time produce?"**
-
-### 7a: Determine Actual Claude Clock Time
-
-**Method 1: Git History (preferred)**
-
-Run `git log --format="%ai" | sort` to get all commit timestamps. Then:
-1. **First commit** = project start
-2. **Last commit** = current state
-3. **Total calendar days** = last - first
-4. **Cluster commits into sessions**: group commits within 4-hour windows as one session
-5. **Estimate session duration**: each session ~ 1-4 hours of active Claude work (use commit density as signal)
-
-**Session Duration Heuristics**:
-- 1-2 commits in a window -> ~1 hour session
-- 3-5 commits in a window -> ~2 hour session
-- 6-10 commits in a window -> ~3 hour session
-- 10+ commits in a window -> ~4 hour session
-
-**Method 2: File Modification Timestamps (no git)**
-
-Use file modification timestamps from source files. Apply same session clustering logic.
-
-**Method 3: Fallback Estimate**
-
-If no reliable timestamps, estimate from lines of code:
-- Assume Claude writes 200-500 lines of meaningful code per hour
-- Claude active hours ~ Total LOC / 350
-
-### 7b: Calculate Value per Claude Hour
-
-```
-Value per Claude Hour = Total Code Value (from Step 5) / Estimated Claude Active Hours
-```
-
-Calculate across scenarios:
-
-| Code Value Scenario | Claude Hours (est.) | Value per Claude Hour |
-|--------------------|--------------------|-----------------------|
-| Engineering only (avg) | [X] hrs | **$[X,XXX]/hr** |
-| Full team equivalent (Growth Co) | [X] hrs | **$[X,XXX]/hr** |
-| Full team equivalent (Enterprise) | [X] hrs | **$[X,XXX]/hr** |
-
-### 7c: Claude Efficiency vs. Human Developer
-
-**Speed Multiplier**:
-```
-Speed Multiplier = Human Dev Hours / Claude Active Hours
-```
-
-**Cost Efficiency**:
-```
-Human Cost = Human Hours x $[avg rate]/hr
-Claude Cost = Subscription ($20-200/month) + API costs (estimate from project size)
-Savings = Human Cost - Claude Cost
-ROI = Savings / Claude Cost
-```
-
-### 7d: Output Format
-
-Add this section to the final report:
+- Rates based on [year] market data; will drift.
+- Excludes: marketing, sales, legal, compliance, hosting/infra, ongoing maintenance.
+- LOC is a proxy; dense/complex code is undercounted, boilerplate is overcounted.
+- Claude active-hour estimate uses commit clustering; may be off by 2-3x.
+- COCOMO II EAF is an approximation (17 multipliers collapsed to 4 buckets).
+- Full-team costs assume standard org structures; your org may differ.
 
 ---
 
-### Claude ROI Analysis
+## Step 11: Write the machine-readable artifact
 
-**Project Timeline**:
-- First commit / project start: [date]
-- Latest commit: [date]
-- Total calendar time: [X] days ([X] weeks)
+Also write a JSON summary to `./cost-estimate.json` for tooling/comparison:
 
-**Claude Active Hours Estimate**:
-- Total sessions identified: [X] sessions
-- Estimated active hours: [X] hours
-- Method: [git clustering / file timestamps / LOC estimate]
-
-**Value per Claude Hour**:
-
-| Value Basis | Total Value | Claude Hours | $/Claude Hour |
-|-------------|-------------|--------------|---------------|
-| Engineering only | $[X] | [X] hrs | **$[X,XXX]/Claude hr** |
-| Full team (Growth Co) | $[X] | [X] hrs | **$[X,XXX]/Claude hr** |
-
-**Speed vs. Human Developer**:
-- Estimated human hours for same work: [X] hours
-- Claude active hours: [X] hours
-- **Speed multiplier: [X]x** (Claude was [X]x faster)
-
-**Cost Comparison**:
-- Human developer cost: $[X] (at $[avg rate]/hr avg)
-- Estimated Claude cost: $[X] (subscription + API)
-- **Net savings: $[X]**
-- **ROI: [X]x** (every $1 spent on Claude produced $[X] of value)
-
-**The headline number**: *Claude worked for approximately [X] hours and produced the equivalent of $[X] in professional development value -- roughly **$[X,XXX] per Claude hour**.*
-
----
+```json
+{
+  "schema_version": "1.0",
+  "generated_at": "ISO-8601 timestamp",
+  "project": {
+    "name": "...",
+    "stack": ["..."],
+    "first_commit": "YYYY-MM-DD",
+    "last_commit": "YYYY-MM-DD"
+  },
+  "codebase": {
+    "counted_loc": 0,
+    "excluded_loc": { "generated": 0, "vendored": 0, "minified": 0, "lockfiles": 0 },
+    "by_language": { "TypeScript": 0, "Python": 0 },
+    "test_ratio": 0.0,
+    "quality_multiplier": 1.0
+  },
+  "engineering": {
+    "base_coding_hours": { "p10": 0, "p50": 0, "p90": 0 },
+    "overhead_multiplier": 1.0,
+    "total_hours": { "p10": 0, "p50": 0, "p90": 0 },
+    "cocomo_ii_hours": 0,
+    "divergence_pct": 0.0
+  },
+  "rates": {
+    "recommended_usd_per_hour": 0,
+    "justification": "..."
+  },
+  "cost_engineering_usd": { "p10": 0, "p50": 0, "p90": 0 },
+  "cost_full_team_usd": {
+    "solo": 0, "lean_startup": 0, "growth": 0, "enterprise": 0
+  },
+  "calendar_months": {
+    "solo": 0, "lean_startup": 0, "growth": 0, "enterprise": 0
+  },
+  "claude_roi": {
+    "active_hours_est": 0,
+    "value_per_hour_usd": 0,
+    "speed_multiplier": 0,
+    "roi_multiple": 0
+  },
+  "sensitivity_drivers": [
+    { "assumption": "...", "p50_impact_usd": 0 }
+  ],
+  "confidence": "low|medium|high"
+}
+```
 
 ---
 
 ## Notes
 
-- Present the estimate in a clear, professional format suitable for sharing with stakeholders.
-- Include confidence intervals and key assumptions.
-- Highlight areas of highest complexity that drive cost.
-- Adapt all language-specific references to match the actual detected stack.
-- If the project spans multiple languages/stacks, break down estimates per component.
+- Keep language professional and concise; this report may be shared with stakeholders.
+- Always show your math: the reader should be able to audit every number back to a LOC count and a rate.
+- If any step's data is unavailable (e.g., no git history), degrade gracefully and lower the `confidence` field accordingly.
+- For multi-service monorepos, break down the bottom-up estimate per service and aggregate.
+- Never present a single dollar figure without its surrounding range.
