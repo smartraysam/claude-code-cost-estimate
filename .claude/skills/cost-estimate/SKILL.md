@@ -868,6 +868,9 @@ Three things the reader should verify, with a copy-pasteable command for each:
 
 *This report was generated with the `/cost-estimate` Claude Code skill, created by **Julien Barbier**. Find the skill and follow for updates: https://github.com/jbarbier/claude-code-cost-estimate*
 
+<!-- This footer ships in the saved .md file and cost-estimate.json only — strip it from the terminal print. -->
+
+
 ---
 
 ## Step 12: Write the machine-readable artifact (to a temp directory, never the repo)
@@ -897,7 +900,7 @@ Write two files into that directory:
 - `cost-estimate-report.md` — the full Markdown report from Step 11
 - `cost-estimate.json` — the machine-readable artifact below
 
-**Also print the full Markdown report to stdout (the terminal)** so the user sees it without opening any file. After printing, end with a one-line pointer to where the files were written, e.g.:
+**Also print the full Markdown report to stdout (the terminal)** so the user sees it without opening any file — **but strip the credit footer** (the "generated with the `/cost-estimate` skill, created by Julien Barbier…" block). The footer belongs only in the saved Markdown file and the JSON artifact, not in the terminal echo; live-printing it would be self-promotional noise the user reading in their own terminal doesn't need. After printing the stripped report, end with a one-line pointer to where the files were written, e.g.:
 
 > *Report also saved to `/tmp/cost-estimate/my-project/cost-estimate-report.md` and `cost-estimate.json`. Not written to the current directory (safer — won't accidentally land in a commit).*
 
