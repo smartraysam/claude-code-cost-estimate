@@ -581,14 +581,23 @@ value_per_claude_hour = total_cost_p50 / claude_active_hours
 speed_multiplier      = total_eng_hours_p50 / claude_active_hours
 
 # Honest Claude cost includes USER TIME reviewing/iterating
-reviewer_hours        = claude_active_hours × 0.5    (default; adjust per user)
-reviewer_cost         = reviewer_hours × recommended_rate
-subscription_cost     = $200/mo × calendar_months_of_project  (or actual if known)
-api_cost              = if ~/.claude/projects logs show usage, estimate;
-                        else $0.50 × commit_count as first-pass heuristic
-claude_total_cost     = subscription_cost + api_cost + reviewer_cost
+reviewer_hours         = claude_active_hours × 0.5    (default; adjust per user)
+reviewer_cost          = reviewer_hours × recommended_rate
 
-roi                   = (total_cost_p50 - claude_total_cost) / claude_total_cost
+# Two DIFFERENT numbers — never add them together
+equivalent_api_spend   = sum(tokens × published_rates) from ~/.claude/projects/*.jsonl
+                         # what the tokens WOULD have cost at API per-token rates
+actual_cash_paid       = depends on user's plan (ask or default):
+                           - Claude Max:    $200/mo × calendar_months  (flat; ignores equivalent_api_spend)
+                           - Claude Pro:    $20/mo  × calendar_months
+                           - API (metered): equivalent_api_spend (the number IS the bill)
+                           - Unknown:       report both, let the reader pick
+
+effective_plan_savings = equivalent_api_spend − actual_cash_paid
+                         # positive = subscription paid off; negative = API would have been cheaper
+claude_total_cost      = actual_cash_paid + reviewer_cost   # use ACTUAL cash, not equivalent
+
+roi                    = (total_cost_p50 − claude_total_cost) / claude_total_cost
 ```
 
 The **reviewer-time inclusion is non-optional** — omitting it overstates ROI by 2-5×. Name the assumption explicitly: "reviewer_time = 0.5× Claude active hours (typical range 0.3-1.0×)."
@@ -708,7 +717,8 @@ Quoting this number as "what the code is worth" is a category error that has bur
 - **Pre-AI rebuild cost — engineering only (P50)**: **$[X]** at $[rate]/hr
 - **Pre-AI rebuild cost — full human team (Growth Co, P50)**: **$[X]**
 - **Calendar time if a human team rebuilt it (Lean startup)**: ~[X] months
-- **Actual Claude cost (from session logs)**: **$[Y]** · see ROI section for multiple
+- **Actual cash paid to Anthropic**: **$[Y]** (based on plan: Max=$200/mo, Pro=$20/mo, API=metered)
+- **Equivalent API spend** (counterfactual, from token usage): **$[Z]** — *what the same tokens would have cost at per-token API rates; NOT what you paid if on a subscription plan*
 - **Pre-AI ÷ actual-AI cost ratio**: [X]× (*i.e. what a human team would have charged vs what Claude actually spent*)
 
 ## Codebase Metrics
@@ -923,8 +933,11 @@ Write `./cost-estimate.json`:
     "method_confidence": "high|medium|low",
     "claude_active_hours": 0,
     "reviewer_hours": 0,
-    "api_cost_usd": 0,
-    "api_cost_source": "session_logs|heuristic",
+    "plan": "max|pro|api|unknown",
+    "actual_cash_paid_usd": 0,
+    "equivalent_api_spend_usd": 0,
+    "equivalent_api_source": "session_logs|heuristic",
+    "effective_plan_savings_usd": 0,
     "token_usage": {
       "input_tokens": 0,
       "cache_creation_input_tokens": 0,
