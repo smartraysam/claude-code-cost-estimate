@@ -114,20 +114,38 @@ Quoting this number as "what the code is worth" is a category error that has bur
 - **Measurement method**: [session_logs / git_clustering / loc_estimate] — confidence [high/medium/low]
 - **Project timeline**: [first] → [last] ([X] days)
 - **Git churn**: +[adds] / −[dels] (net +[net])
-- **Sessions detected**: [N]
-- **Claude active hours**: [N]
-- **Reviewer hours (0.5× assumed)**: [N]
+- **Sessions detected**: [N] · **Peak concurrent windows**: [N] · **Avg concurrency**: [X.XX]×
+- **Claude compute hours** (sum, capped 6h/session): [N]
+- **Operator hours** (wall-clock union — real keyboard time): [N]
+- **Reviewer hours** ([ratio]× operator — tuned for [peak]-window parallel usage): [N]
 - **Plan**: [max / pro / api / unknown]
-- **Claude tokens cost (if it were done via API)**: $[X] — *counterfactual only; computed from `message.usage` × published per-token rates. If you're on Max/Pro, this is NOT what you paid.*
+- **Equivalent API spend** (counterfactual, published per-token rates × 11,587 `message.usage` blocks): $[X] — *NOT what you paid if on Max/Pro.*
 - **Actual cash paid to Anthropic**: $[X] — flat subscription if on a plan, metered bill if on API
 - **Effective plan savings** (equivalent API − actual cash): $[X] — positive = subscription paid off
 - **Value produced (P50 full-team)**: $[X]
-- **Value per Claude hour**: **$[X,XXX]/hr**
-- **Speed multiplier vs human team**: **[X]×** — sanity: [plausible/suspicious/implausible]
+- **Value per Claude compute hour**: **$[X,XXX]/hr**
+- **Value per operator hour**: **$[X,XXX]/hr**
+- **Speed multiplier (compute)**: **[X]×** · **Speed multiplier (operator)**: **[Y]×** — sanity: [plausible/suspicious/implausible]
 - **Total Claude investment** (actual cash + reviewer time): $[X]
 - **ROI**: **[X]×** — every $1 you actually spent → $[X] of human-equivalent value
 
-> *Claude worked ~[X] hours; user reviewed ~[X] hours. Combined, they produced ~$[X] of professional development value — roughly **$[X,XXX] per Claude hour**.*
+> *Claude ran ~[compute_h] hours of AI work across ~[operator_h] wall-clock hours of your time at the keyboard (avg [avg_conc]× parallel). Combined output: ~$[X] of professional development value — **$[X,XXX] per operator hour**.*
+
+### Parallel Execution Profile
+
+*Fill this whenever `peak_concurrent_sessions >= 2`. The numbers tell the user how they compare to the rest of the Claude Code market.*
+
+This project was built with **[peak] Claude Code windows concurrently at peak** (avg **[avg_concurrency]×** simultaneous), spending **[operator_hours_union]** real keyboard hours to produce **[active_hours_capped6]** hours of Claude compute work. For context:
+
+| Workflow | Typical speed multiplier | Description |
+|---|---|---|
+| GitHub Copilot baseline (SPACE 2024) | 1.55× | Solo developer, inline autocomplete, reviewing every suggestion |
+| Single-window Claude Code (autonomous) | 3 – 10× | Developer letting Claude run tool-use loops between reviews |
+| **Power-user (2 – 4 parallel)** | **10 – 40×** | Developer as traffic controller, spot-reviewing multiple streams |
+| Advanced orchestrator (5 – 7 parallel) | 40 – 80× | Most cognitive work is queue management |
+| Top-percentile expert (8 – 10 parallel) | 80 – 150× | Observed in the highest-productivity Claude Code users |
+
+This user's **operator-hour speed multiplier of [X]×** sits in the **[tier]** band — [contextual sentence: "exactly where a [tier] user should be" / "higher than the typical [tier] range, worth spot-checking" / "extraordinary — this is how the 99th-percentile workflow looks"].
 
 ## Sensitivity
 

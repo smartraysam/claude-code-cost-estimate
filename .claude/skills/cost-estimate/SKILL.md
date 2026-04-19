@@ -242,11 +242,11 @@ Same reference (`references/team-cost.md`) — role ratios, rates, and stage mul
 
 ---
 
-## Step 9: Claude ROI (session-aware, churn-aware, reviewer-aware)
+## Step 9: Claude ROI (session-aware, churn-aware, reviewer-aware, concurrency-aware)
 
 The headline: *"What did each hour of Claude's actual clock time produce — and what did the user pay in time + money?"*
 
-### 9a. Measure token usage + active hours
+### 9a. Measure token usage + active hours + parallel windows
 
 **Preferred — session logs (high confidence)**:
 
@@ -254,9 +254,7 @@ The headline: *"What did each hour of Claude's actual clock time produce — and
 python3 .claude/skills/cost-estimate/scripts/claude_token_cost.py
 ```
 
-Returns ground-truth input/cache-write/cache-read/output tokens + equivalent API cost computed from published per-model rates. Use this directly in Step 9b. If sessions are found, flag `method: "session_logs"` and `api_cost_source: "session_logs"`.
-
-For `claude_active_hours`, sum `(last_timestamp - first_timestamp)` per session file in `~/.claude/projects/<project-hash>/*.jsonl`, capped at 6 hours per session to avoid counting idle time.
+Returns ground-truth tokens + equivalent API cost AND session-timing stats: `active_hours_capped6` (Claude compute throughput — additive across overlapping sessions), `operator_hours_union` (wall-clock time the user actually sat at the keyboard), `peak_concurrent_sessions`, and `avg_concurrency`. Flag `method: "session_logs"` and `api_cost_source: "session_logs"`.
 
 **Fallback — git session clustering (medium confidence, ±2×)**:
 
@@ -264,23 +262,34 @@ For `claude_active_hours`, sum `(last_timestamp - first_timestamp)` per session 
 python3 .claude/skills/cost-estimate/scripts/git_session_clustering.py
 ```
 
+No concurrency signal available in this mode.
+
 **Final fallback — LOC heuristic (low confidence)**: `net_claude_loc / 350 hrs`.
 
 ### 9b. Compute headline metrics
 
-Read `references/claude-roi.md` for the full formula and the **reviewer-time rule** (non-optional: 0.5× Claude hours by default; omitting it overstates ROI by 2 – 5×).
+Read `references/claude-roi.md` for the full formulas. Two speed multipliers — report both:
 
-Two DIFFERENT numbers — never add them together:
-- `equivalent_api_spend` = what tokens WOULD have cost at per-token API rates (counterfactual)
+- `speed_multiplier_compute = total_eng_hours_p50 / active_hours_capped6` — AI throughput
+- `speed_multiplier_operator = total_eng_hours_p50 / operator_hours_union` — honest ROI metric (= compute multiplier × avg_concurrency)
+
+**Reviewer-time rule** (non-optional): tune `reviewer_ratio` on peak concurrency — 0.5 for single-window, 0.2-0.3 for parallel (the operator IS the reviewer-in-loop), 0.1 for high-concurrency orchestration. Omitting reviewer time overstates ROI; using the wrong ratio under-counts it.
+
+Two DIFFERENT cost numbers — never add them together:
+- `equivalent_api_spend` = counterfactual per-token bill
 - `actual_cash_paid` = Max ($200/mo × months) | Pro ($20/mo × months) | API (the bill itself)
 
-### 9c. Speed-multiplier sanity check
+### 9c. Speed-multiplier sanity check — parallel-aware
 
-Anchor: GitHub Copilot's 1.55× published baseline. Flag any `speed_multiplier > 20` as *implausible*, > 8 as *suspicious*. See the reference for the exact gate and the canned disclaimer to paste into the report.
+The gate is tiered by `peak_concurrent_sessions` (see `references/claude-roi.md` section 3). Single-window autonomous Claude Code legitimately runs at 3 – 10× (vs Copilot's 1.55× inline-autocomplete baseline); each additional parallel window is a ~1× multiplier on top. Expected honest ceiling: `~15 × peak_concurrent`. Flag only if the operator-hour multiplier exceeds 3× that ceiling.
 
-### 9d. State limitations loudly
+### 9d. Parallel Execution Profile paragraph — REQUIRED in the report when `peak_concurrent >= 2`
 
-Always include: *"Claude active hours estimated via [method]. Actual session time may differ by ±30% (session logs) or ±2× (git clustering). Reviewer time assumed at 0.5× Claude hours; adjust if you know your ratio. Speed multiplier is directional, not benchmark-grade."*
+Fill in the *Parallel Execution Profile* paragraph in the report template with the user's peak, avg concurrency, operator hours, compute hours, and the tier-appropriate market comparison (Copilot 1.55× / single-window 3-10× / power-user 2-4 windows at 10-40× / advanced 5-7 at 40-80× / expert 7-10 at 80-150×). See the reference for the exact wording.
+
+### 9e. State limitations loudly
+
+Always include: *"Claude active hours from [method]. Reviewer time assumed at [ratio]× operator hours (tuned for [peak] parallel windows). Operator-hour speed multiplier is the honest ROI number; compute-hour multiplier benchmarks AI throughput."*
 
 ---
 

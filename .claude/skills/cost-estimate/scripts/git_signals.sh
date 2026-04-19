@@ -16,7 +16,9 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
   exit 0
 fi
 
-first=$(git log --reverse --format="%ai" -1 2>/dev/null | awk '{print $1}')
+# `git log --reverse -1` returns the NEWEST commit (the -1 limit applies
+# before --reverse), so use --max-parents=0 for the root commit instead.
+first=$(git log --format="%ai" "$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)" 2>/dev/null | head -1 | awk '{print $1}')
 last=$(git log --format="%ai" -1 2>/dev/null | awk '{print $1}')
 commits=$(git rev-list --count HEAD 2>/dev/null || echo 0)
 contributors=$(git shortlog -sne HEAD 2>/dev/null | wc -l | awk '{print $1}')

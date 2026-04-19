@@ -62,7 +62,13 @@
   "claude_roi": {
     "method": "session_logs|git_clustering|loc_estimate",
     "method_confidence": "high|medium|low",
-    "claude_active_hours": 0,
+    "active_hours_capped6": 0,
+    "active_hours_uncapped": 0,
+    "operator_hours_union": 0,
+    "peak_concurrent_sessions": 0,
+    "avg_concurrency": 0,
+    "parallel_tier": "single_window|single_autonomous|power_user|advanced_orchestrator|top_percentile_expert|off_the_chart",
+    "reviewer_ratio": 0.5,
     "reviewer_hours": 0,
     "plan": "max|pro|api|unknown",
     "actual_cash_paid_usd": 0,
@@ -77,8 +83,10 @@
       "messages": 0
     },
     "claude_total_cost_usd": 0,
-    "value_per_claude_hour_usd": 0,
-    "speed_multiplier": 0,
+    "value_per_claude_compute_hour_usd": 0,
+    "value_per_operator_hour_usd": 0,
+    "speed_multiplier_compute": 0,
+    "speed_multiplier_operator": 0,
     "sanity_flag": "plausible|suspicious|implausible",
     "roi_multiple": 0
   },
