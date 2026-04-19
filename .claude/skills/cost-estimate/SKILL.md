@@ -469,6 +469,44 @@ find "$SESSIONS_DIR" -name "*.jsonl" -exec sh -c '
 
 If session logs exist, compute `claude_active_hours` as the sum of (last - first timestamp) per session file, capped per session at 6 hours to avoid counting idle time. Flag `method: "session_logs"` in the JSON artifact with high confidence.
 
+**Also extract real token usage and cost** (preferred over heuristics). Each assistant message in the JSONL has a `message.usage` object with `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`:
+
+```bash
+python3 <<'PY'
+import glob, json, os
+PROJ_HASH = os.getcwd().replace('/', '-')
+SESSIONS_DIR = os.path.expanduser(f'~/.claude/projects/{PROJ_HASH}')
+# Published rates as of 2026-04 (Opus 4.7), per 1M tokens
+RATES = {
+    'opus':    {'in': 15.00, 'cache_write': 18.75, 'cache_read': 1.50, 'out': 75.00},
+    'sonnet':  {'in':  3.00, 'cache_write':  3.75, 'cache_read': 0.30, 'out': 15.00},
+    'haiku':   {'in':  0.80, 'cache_write':  1.00, 'cache_read': 0.08, 'out':  4.00},
+}
+totals = {'in':0, 'cache_write':0, 'cache_read':0, 'out':0, 'cost_usd':0.0, 'messages':0}
+for f in glob.glob(f'{SESSIONS_DIR}/*.jsonl'):
+    for line in open(f):
+        try: d = json.loads(line)
+        except: continue
+        msg = d.get('message', {})
+        u = msg.get('usage')
+        if not u: continue
+        model = msg.get('model', '')
+        tier = 'opus' if 'opus' in model else ('haiku' if 'haiku' in model else 'sonnet')
+        r = RATES[tier]
+        ti = u.get('input_tokens', 0)
+        tcw = u.get('cache_creation_input_tokens', 0)
+        tcr = u.get('cache_read_input_tokens', 0)
+        to = u.get('output_tokens', 0)
+        cost = (ti*r['in'] + tcw*r['cache_write'] + tcr*r['cache_read'] + to*r['out']) / 1_000_000
+        totals['in'] += ti; totals['cache_write'] += tcw
+        totals['cache_read'] += tcr; totals['out'] += to
+        totals['cost_usd'] += cost; totals['messages'] += 1
+print(json.dumps(totals, indent=2))
+PY
+```
+
+This produces ground-truth API cost instead of the `$0.50 × commit_count` heuristic. Use it for `api_cost` in Step 9b; flag `api_cost_source: "session_logs"` with high confidence. Fall back to the heuristic only if session logs are absent.
+
 **Method 2: Git churn + session clustering.** If no session logs, cluster commits within a 4-hour window:
 
 ```bash
@@ -786,6 +824,15 @@ Write `./cost-estimate.json`:
     "method_confidence": "high|medium|low",
     "claude_active_hours": 0,
     "reviewer_hours": 0,
+    "api_cost_usd": 0,
+    "api_cost_source": "session_logs|heuristic",
+    "token_usage": {
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "messages": 0
+    },
     "claude_total_cost_usd": 0,
     "value_per_claude_hour_usd": 0,
     "speed_multiplier": 0,
