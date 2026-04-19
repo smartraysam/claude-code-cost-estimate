@@ -9,7 +9,11 @@ You are a senior software engineering consultant producing a defensible cost est
 
 ## Philosophy (read first, do not skip)
 
-Software cost estimation is fundamentally **uncertain**. This skill produces a *range*, not a quote. Internalize these rules:
+**This skill estimates "replacement cost to rebuild"** — what it would cost a traditional human team to recreate this codebase from scratch today, starting from specs that already exist. It is NOT market value. It is NOT a quote. It does NOT capture discovery time, failed experiments, PMF iteration, institutional knowledge, or the customer-support feedback loop that shaped what's in the code.
+
+Say this explicitly in the report — in the TL;DR, not buried. Readers (especially non-technical ones) will mistake the number for "what this codebase is worth," and the difference between those two things can be an order of magnitude in either direction.
+
+This skill produces a *range*, not a quote. Internalize these rules:
 
 1. **LOC is a proxy.** Ten lines of dense regex ≠ ten lines of boilerplate. Cross-validate with process signals (git history) and a top-down model (COCOMO II).
 2. **Exclude anything humans didn't write.** Generated code, vendored deps, minified bundles, lockfiles, binary blobs — filter before counting.
@@ -233,6 +237,38 @@ hours_P90 = LOC / rate_low    (pessimistic → more hours)
 Sum across categories → **Base Coding Hours (P10 / P50 / P90)**.
 
 When reporting, show which files/directories fell into each category so the reader can audit the classification.
+
+### Step 3b: Per-feature / per-directory breakdown (user-asked, high signal)
+
+Users asked for this repeatedly (scc #698, Faros/Workweave ROI posts): "what did the checkout flow cost?" not just "what did the whole repo cost?".
+
+For any top-level directory with >5% of total counted LOC, compute a sub-estimate and report it alongside the aggregate:
+
+```bash
+# Per-top-level-directory LOC
+for d in */; do
+  count=$(find "$d" -type f \( -name "*.ts" -o -name "*.py" -o -name "*.go" \) \
+    -not -path "*/node_modules/*" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+  echo "$d $count"
+done | sort -k2 -n -r | head -15
+```
+
+Report a per-feature table with its own hours/cost, still showing the P50 range:
+
+| Directory | LOC | % of total | Hours (P50) | Cost (P50) |
+|---|---|---|---|---|
+| `src/checkout/` | 8,400 | 24% | 420 | $40k |
+| `src/inventory/` | 6,100 | 17% | 305 | $29k |
+| ... | | | | |
+
+### Step 3c: Scoped mode (`--since <commit>` or `--path <dir>`)
+
+When the user invokes `/cost-estimate` with an argument like `--since abc123` or `--path src/checkout/`, restrict the entire analysis to that slice:
+
+- `--since <commit>`: use `git log <commit>..HEAD --numstat` and `git diff <commit>..HEAD --numstat` to scope LOC + churn to changes since that commit
+- `--path <dir>`: restrict Steps 1-3 to that subdirectory; still apply full overhead + rates
+
+This unlocks "what did this quarter cost?" and "what did this feature cost?" use cases that competitors don't deliver. Preserve every other step — the report reads the same, just for a subset.
 
 ---
 
@@ -651,6 +687,19 @@ Lead with TL;DR. Detail follows. Caveats + spot-check close.
 # [Project Name] — Development Cost Estimate
 
 **Generated**: [date] · **Stack**: [one-line] · **Strategy**: [micro/small/normal/macro] · **Confidence**: [low/medium/high]
+
+## What this number is — and what it isn't
+
+**This is the *replacement cost to rebuild***, not the codebase's market value. It measures what a traditional human team would spend to recreate this code from scratch, starting with specs in hand. It does NOT include:
+
+- Discovery, user research, PMF iteration
+- Failed experiments and dead branches not represented in the final code
+- Institutional knowledge (what the team learned while building it)
+- Customer support feedback loops that shaped edge cases
+- Sales, marketing, legal, compliance, infrastructure hosting
+- Maintenance past delivery (see 5-year TCO section)
+
+Quoting this number as "what the code is worth" is a category error that has burned people before. If a potential acquirer or investor asks, point them at the range and the *replacement cost* framing — never the single number.
 
 ## TL;DR
 
