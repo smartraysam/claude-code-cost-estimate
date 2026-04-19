@@ -42,14 +42,17 @@ The skill acts as a senior software engineering consultant. It:
 
 ## Installation
 
-Copy the skill into your project's `.claude/skills/` directory:
+Copy the skill into your project's `.claude/skills/` directory. The skill follows [Anthropic's progressive-disclosure layout](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) — a slim `SKILL.md` (< 500 lines) plus `scripts/`, `references/`, and `assets/` that load only when the relevant step runs:
 
 ```
 your-project/
   .claude/
     skills/
       cost-estimate/
-        SKILL.md
+        SKILL.md                 # orchestrator (346 lines)
+        scripts/                 # executable helpers (LOC count, git signals, Claude token cost, …)
+        references/              # methodology tables loaded on demand (COCOMO II, FP, LOCOMO, …)
+        assets/                  # report template + JSON artifact schema
 ```
 
 Or clone this repo and copy the skill folder:
@@ -186,6 +189,10 @@ Acronyms and jargon used in this README and in the generated report:
 ## Credit
 
 This skill is an expanded version of the original idea by **Todd Saunders** ([@toddsaunders](https://x.com/toddsaunders) on Twitter/X).
+
+## Upstream
+
+This skill is structured to conform to [Anthropic's official Agent Skill best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): `SKILL.md` stays under 500 lines, detailed methodology lives in `references/`, executable helpers live in `scripts/`, and output templates live in `assets/`. If you'd like to see it in the [anthropics/skills](https://github.com/anthropics/skills) repository, upvote or comment on the submission PR.
 
 ## License
 
