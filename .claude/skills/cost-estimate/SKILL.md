@@ -1,6 +1,6 @@
 ---
 name: cost-estimate
-description: Estimate what a codebase would have cost to build with a traditional human team. Uses line-of-code analysis, COCOMO II cross-check, market rates, organizational overhead, and churn-aware Claude ROI. Produces ranged estimates (P10/P50/P90) with explicit assumptions and a machine-readable artifact.
+description: Estimate what a codebase would have cost to build with a traditional human team. Combines LOC analysis, git-process signals, COCOMO II cross-check, market rates, organizational overhead, and Claude-session-aware ROI. Produces P10/P50/P90 ranges with explicit assumptions, spot-check guidance, and a machine-readable artifact.
 ---
 
 # Cost Estimate Command
@@ -11,92 +11,182 @@ You are a senior software engineering consultant producing a defensible cost est
 
 Software cost estimation is fundamentally **uncertain**. This skill produces a *range*, not a quote. Internalize these rules:
 
-1. **LOC is a proxy, not the truth.** Ten lines of dense regex ≠ ten lines of boilerplate. Use LOC as scaffolding, then correct with complexity + quality signals.
-2. **Exclude anything humans didn't write.** Generated code, vendored deps, minified bundles, lockfiles, and binary blobs must be filtered out before counting.
-3. **Every number gets a range.** Report P10 (optimistic), P50 (median), P90 (pessimistic). Single-point estimates are a lie about confidence.
-4. **Cross-check with COCOMO II.** The category-rate method is bottom-up; COCOMO II is top-down. If they disagree by >2x, investigate before reporting.
-5. **State your assumptions.** Every estimate must list what's counted, what's excluded, what's uncertain, and what would move the number most.
-6. **Compound, don't add, overheads.** Architecture, debugging, testing, etc. multiply sequentially on the base coding time — they don't sum.
-7. **Churn is signal.** `git log --numstat` reveals rework. 10k gross lines added with 7k deleted is a different project than 10k net new.
+1. **LOC is a proxy.** Ten lines of dense regex ≠ ten lines of boilerplate. Cross-validate with process signals (git history) and a top-down model (COCOMO II).
+2. **Exclude anything humans didn't write.** Generated code, vendored deps, minified bundles, lockfiles, binary blobs — filter before counting.
+3. **Every number gets a range.** P10 (optimistic) / P50 (median) / P90 (pessimistic). Single-point estimates misrepresent confidence.
+4. **Two kinds of signals.** *Code signals* = LOC + complexity + quality. *Process signals* = commits, contributors, duration, churn. Use both; when they disagree, investigate.
+5. **Don't double-count.** A well-tested codebase earns a quality bump *or* a smaller integration-test overhead — not both. The checklist below enforces this.
+6. **Compound overheads.** Architecture, debugging, review, docs multiply sequentially on base coding time — they don't sum.
+7. **Size-aware.** Micro projects (<500 LOC) don't need 10-page reports. Macro projects (>500k LOC) need monorepo decomposition.
+8. **State your limits.** Every report must list what's counted, what's excluded, what's fragile, and what the reader should spot-check.
 
-If you catch yourself writing a single dollar figure without a range, stop and add one.
+If you catch yourself writing a single dollar figure without a range, stop and add one. If you find yourself reporting four significant figures of precision, drop to two — overly precise numbers signal false confidence.
 
 ---
 
-## Step 1: Measure the codebase
+## Step 0: Pick a strategy (size-aware)
+
+Before measuring, decide which playbook applies. Run a size sniff — try counters first, fall back to filtered `wc`:
+
+```bash
+# Try cloc, tokei, or scc for a fast language-aware total
+cloc --vcs=git --quiet . 2>/dev/null | awk '/SUM:/ {print $NF}' && exit 0
+tokei --output=json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Total']['code'])" && exit 0
+scc --format=json 2>/dev/null | python3 -c "import sys,json; print(sum(l['Code'] for l in json.load(sys.stdin)))" && exit 0
+
+# Fallback: count LINES (not files) in common source types, with exclusions
+find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" \
+  -o -name "*.go" -o -name "*.rs" -o -name "*.java" -o -name "*.rb" \
+  -o -name "*.php" -o -name "*.swift" -o -name "*.kt" -o -name "*.c" \
+  -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) \
+  -not -path "*/node_modules/*" -not -path "*/.git/*" \
+  -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/vendor/*" \
+  -not -path "*/.venv/*" -not -path "*/__pycache__/*" -not -path "*/target/*" \
+  -print0 | xargs -0 wc -l 2>/dev/null | awk 'END{print $1}'
+```
+
+| Project size | Strategy | Report shape |
+|---|---|---|
+| **Micro** (<500 LOC) | Nominal estimate only | One paragraph + one line item. Skip Steps 4 (COCOMO), 8 (full team), 10 (sensitivity). Output: "~X days of senior dev work; ~$Y-Z at typical rates; confidence: low." |
+| **Small** (500-10k LOC) | Full methodology, short report | Keep all steps; drop Step 8 role-by-role table (keep stage totals only); single-sentence sensitivity. |
+| **Normal** (10k-500k LOC) | Full skill, full report | All steps, all tables. Default. |
+| **Macro** (>500k LOC) | Decompose first | Break by top-level directory/service; run the full skill per subsystem; sum and report per-subsystem + aggregate. Don't categorize 500k lines in one pass. |
+
+State which strategy you chose and why at the top of the report.
+
+---
+
+## Step 1: Measure the codebase (code signals)
 
 ### 1a. Prefer a real counter
 
 Try these tools in order — each is fast and handles exclusions properly:
 
 ```bash
-cloc --vcs=git .                           # best: language breakdown + comment/blank split
+cloc --vcs=git .                           # best: language + comment/blank split
 tokei --exclude '**/node_modules/**' .     # very fast Rust alternative
-scc .                                       # similar, with complexity estimate built in
+scc .                                       # similar, with built-in complexity estimate
 ```
 
 If none is installed, fall back to a filtered `find + wc`:
 
 ```bash
-# Find source files, excluding common noise. Adapt to detected stack.
 find . -type f \
   \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \
      -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \
      -o -name "*.rb" -o -name "*.php" -o -name "*.swift" -o -name "*.kt" \
      -o -name "*.cpp" -o -name "*.cc" -o -name "*.c" -o -name "*.h" \) \
-  -not -path "*/node_modules/*" \
-  -not -path "*/.git/*" \
-  -not -path "*/dist/*" \
-  -not -path "*/build/*" \
-  -not -path "*/vendor/*" \
-  -not -path "*/.venv/*" \
-  -not -path "*/__pycache__/*" \
-  -not -path "*/target/*" \
+  -not -path "*/node_modules/*" -not -path "*/.git/*" \
+  -not -path "*/dist/*" -not -path "*/build/*" \
+  -not -path "*/vendor/*" -not -path "*/.venv/*" \
+  -not -path "*/__pycache__/*" -not -path "*/target/*" \
   -not -path "*/.next/*" \
   | xargs wc -l
 ```
 
-### 1b. Explicit exclusions (do NOT count)
+### 1b. DRYness / ULOC (copy-paste deflator)
+
+Dense repos with copy-pasted blocks inflate LOC by 10-30%. If `scc` is available it reports ULOC (unique lines of code) in JSON; use the ratio:
+
+```bash
+scc --format=json . 2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+total = sum(l['Code'] for l in d)
+uniq  = sum(l.get('ULOC', l['Code']) for l in d)  # ULOC = unique LOC across files
+print(f'SLOC:{total} ULOC:{uniq} DRYness:{uniq/total:.2f}')
+"
+```
+
+Apply a deflator to base hours:
+```
+dryness_deflator = 1 - (1 - DRYness) * 0.5       # DRYness=1.0 → no deflate; 0.6 → 0.80×
+```
+If DRYness can't be computed (no `scc`), skip — don't invent a number. Note it in the report.
+
+### 1c. Explicit exclusions (do NOT count)
 
 Report these separately as "excluded LOC" for transparency:
 
 - **Vendored deps**: `node_modules/`, `vendor/`, `.venv/`, `third_party/`, `target/`, `dist/`, `build/`
-- **Generated code**: `*.pb.go`, `*_pb2.py`, `*.g.dart`, `*.freezed.dart`, `*_generated.*`, OpenAPI-generated clients, Prisma client, `schema.graphql` types
+- **Generated code**: `*.pb.go`, `*_pb2.py`, `*.g.dart`, `*.freezed.dart`, `*_generated.*`, OpenAPI-generated clients, Prisma client, `schema.graphql` types. Detect by header tags: `// Code generated by …`, `@generated`, `DO NOT EDIT`.
 - **Minified / bundles**: `*.min.js`, `*.min.css`, sourcemaps, webpack chunks
 - **Lockfiles**: `package-lock.json`, `yarn.lock`, `Cargo.lock`, `poetry.lock`, `go.sum`, `Gemfile.lock`
 - **Binary / assets**: images, fonts, PDFs, videos, `*.wasm`
-- **Migrations auto-generated by frameworks** (e.g., Django `0001_initial.py` — count the *intent*, not the verbosity)
+- **Framework auto-migrations** (count intent, not verbosity)
 
-Detect generated files by: header comments like `// Code generated by …`, `@generated`, `DO NOT EDIT`, or paths matching known generator outputs.
+### 1d. Detect quality signals (quality_multiplier, 0.7-1.3)
 
-### 1c. Detect quality signals
-
-These modify the per-LOC value (better code = more value per line):
+Applied to *per-LOC value*, not to hours. Max one bump per signal; sum capped at +30% / -30%.
 
 | Signal | How to detect | Effect |
 |---|---|---|
-| Test coverage ratio | `test_LOC / source_LOC` (>0.5 is strong) | +10-20% quality |
-| Type coverage | TS strict, Python type hints, Go (default) | +5-15% quality |
-| Documentation | README length, inline docs, ADRs | +5-10% quality |
-| CI/CD maturity | `.github/workflows/`, test automation | +5-10% quality |
-| Observability | logging, tracing, metrics libraries | +5-10% quality |
-| Security hardening | auth, input validation, secrets mgmt | +5-10% quality |
+| Test coverage ratio | `test_LOC / source_LOC > 0.5` | +10% |
+| Type safety | TS strict, mypy strict, Go, Rust, Kotlin | +5% |
+| Documentation | README >1k chars, inline docs, ADRs | +5% |
+| CI/CD maturity | `.github/workflows/` with actual jobs | +5% |
+| Observability | logging/tracing/metrics libs | +5% |
+| Security hardening | auth, secrets mgmt, input validation | +5% |
+| No tests / untyped / no CI | per-signal | -5% each, floor 0.7 |
 
-Report a **quality multiplier** (1.0 = baseline; 1.3 = high-quality; 0.7 = rushed/untested).
+### 1e. Detect the stack
 
-### 1d. Detect the stack
-
-Examine: `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/`, `terraform/`, `k8s/`, framework configs (`next.config.js`, `vite.config.ts`, Django `settings.py`, Rails `config/`, etc.).
+Examine: `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/`, `terraform/`, `k8s/`, framework configs.
 
 Output a one-paragraph stack summary before moving on.
 
 ---
 
-## Step 2: Categorize code & calculate base hours (with ranges)
+## Step 2: Gather process signals (git history)
 
-For each code category detected, assign LOC and a productivity range. A senior developer (5+ years) ships this many meaningful lines per hour:
+Process signals cross-validate LOC and reveal where effort actually went. If the project has no git history, note that and skip to Step 3 with lowered confidence.
 
-| Category | Low (P90 hrs) | Mid (P50) | High (P10 hrs) | Examples |
+### 2a. Commit activity
+
+```bash
+# Project duration and commit count
+git log --format="%ai" | sort | awk 'NR==1{first=$0} END{print "first:", first, "last:", $0, "count:", NR}'
+
+# Unique contributors
+git log --format="%ae" | sort -u | wc -l
+
+# Churn totals (gross additions / deletions / net)
+git log --numstat --pretty=tformat: \
+  | awk '{adds += $1; dels += $2} END {printf "added:%d deleted:%d net:%d churn_ratio:%.2f\n", adds, dels, adds-dels, (dels>0?adds/dels:0)}'
+```
+
+Record:
+- `first_commit_date`, `last_commit_date`, `project_duration_days`
+- `commit_count`, `contributor_count`
+- `gross_adds`, `gross_dels`, `net_adds`, `churn_ratio = adds/dels`
+
+### 2b. What the signals mean
+
+| Signal | Interpretation |
+|---|---|
+| `churn_ratio` > 2.0 | Heavy rework — add 15% to Total hours to reflect iteration cost the LOC count misses |
+| `contributor_count` >= 3 | Real team; coordination overhead already implicit — don't inflate further |
+| `commit_count` < 10 with >5k LOC | Likely a one-shot import; LOC may overstate bespoke work |
+| `project_duration_days` short vs LOC | Heavy AI/automation assist — flag for ROI step |
+
+### 2c. Process signals cross-check
+
+A standalone "process-only" sanity estimate:
+
+```
+process_hours ≈ commit_count × avg_commit_hours
+  where avg_commit_hours ≈ 0.5 (small commits) to 3.0 (large rewrites)
+```
+
+Use this only as a *bounds check*: if your Step 4 total is <0.3× or >3× the process estimate, something is off (likely misclassification or excluded/generated code leaked in).
+
+---
+
+## Step 3: Categorize code & calculate base hours (with ranges)
+
+A senior dev (5+ years) ships this many meaningful lines per hour:
+
+| Category | Low (→ P90 hrs) | Mid (P50) | High (→ P10 hrs) | Examples |
 |---|---|---|---|---|
 | Simple CRUD/boilerplate | 30 | 40 | 50 | REST endpoints, form handlers, basic UI |
 | Standard business logic | 20 | 25 | 30 | Services, controllers, data flow |
@@ -116,112 +206,125 @@ For each code category detected, assign LOC and a productivity range. A senior d
 
 **Formula per category**:
 ```
-hours_P50 = LOC / rate_P50
-hours_P10 = LOC / rate_high   (optimistic = fewer hours)
-hours_P90 = LOC / rate_low    (pessimistic = more hours)
+hours_P50 = LOC / rate_mid
+hours_P10 = LOC / rate_high   (optimistic → fewer hours)
+hours_P90 = LOC / rate_low    (pessimistic → more hours)
 ```
 
-Sum across categories for **Base Coding Hours (P10 / P50 / P90)**.
+Sum across categories → **Base Coding Hours (P10 / P50 / P90)**.
+
+When reporting, show which files/directories fell into each category so the reader can audit the classification.
 
 ---
 
-## Step 3: COCOMO II cross-check
+## Step 4: COCOMO II cross-check
 
-This is your second opinion — a top-down sanity check against an industry-validated model.
+Industry-validated top-down sanity check.
 
 ```
 Effort_person_months = A × (KSLOC)^E × EAF
-Where:
-  A   = 2.94 (calibrated constant)
-  E   = 1.0 for nominal projects; 0.91-1.23 based on scale drivers
-  EAF = Effort Adjustment Factor (product of 17 effort multipliers;
-        for a quick estimate use 0.7 for simple, 1.0 nominal, 1.5 complex, 2.5 very complex)
-  KSLOC = thousands of source LOC (excluding generated/vendored)
+  A     = 2.94
+  E     = 0.91-1.23 (use 1.0 nominal)
+  EAF   = product of 17 effort multipliers (simplified below)
+  KSLOC = source LOC / 1000 (excluding generated/vendored)
 
-Convert to hours: person_months × 152 = hours
+hours = person_months × 152
 ```
 
-**Quick-use guidance**:
-- Simple CRUD web app: E=0.95, EAF=0.7
-- Standard SaaS product: E=1.00, EAF=1.0
-- Platform/infrastructure: E=1.10, EAF=1.5
-- Systems / compiler / crypto-heavy: E=1.15, EAF=2.0
+**Quick EAF table** (collapsed from 17 multipliers into 4 buckets):
 
-Compare COCOMO output to the bottom-up Step 2 total.
-- **Within 30%**: good, use bottom-up number.
-- **30-100% divergence**: report both, take geometric mean.
-- **>2x divergence**: something is wrong (likely wrong category assignment or bad LOC count). Investigate before reporting.
+| Project type | E | EAF |
+|---|---|---|
+| Simple CRUD web app | 0.95 | 0.7 |
+| Standard SaaS product | 1.00 | 1.0 |
+| Platform / infrastructure | 1.10 | 1.5 |
+| Systems / compiler / crypto-heavy | 1.15 | 2.0 |
+| Safety-critical / regulated | 1.20 | 2.5 |
+
+Compare COCOMO to Step 3:
+
+- **Within 30%** → good; report Step 3 number
+- **30-100% divergence** → report both; take geometric mean: `sqrt(bottom_up × cocomo)`
+- **>2x divergence** → **stop and investigate** before reporting. Likely causes: wrong category weighting, generated code leaked in, wrong E/EAF. Do not publish mismatched numbers.
 
 ---
 
-## Step 4: Apply overhead multipliers (compounding)
+## Step 5: Overhead multipliers (compounding, no double-count)
 
-The additional work beyond pure coding. Apply **multiplicatively**, not additively:
+Apply **multiplicatively** and follow this rule: **if a quality signal already bumped per-LOC value in Step 1c, reduce the related overhead rate to the low end** to avoid double counting.
 
 ```
 Total_Eng_Hours = Base_Coding_Hours
-                × (1 + arch_design)      // 0.15-0.20
-                × (1 + debugging)         // 0.25-0.30
-                × (1 + code_review)       // 0.10-0.15
-                × (1 + documentation)     // 0.10-0.15
-                × (1 + integration_test)  // 0.20-0.25
-                × (1 + learning_curve)    // 0.10-0.20 (specialized stacks only)
-                × (1 + devops_setup)      // 0.05-0.10
-                × quality_multiplier      // 0.7 - 1.3 from Step 1c
+                × (1 + arch_design)       // 0.15-0.20
+                × (1 + debugging)          // 0.25-0.30
+                × (1 + code_review)        // 0.10-0.15
+                × (1 + documentation)      // 0.10-0.15   ← use low end if quality bonus for docs
+                × (1 + integration_test)   // 0.20-0.25   ← use low end if quality bonus for tests
+                × (1 + learning_curve)     // 0.10-0.20 (only for specialized stacks)
+                × (1 + devops_setup)       // 0.05-0.10   ← use low end if quality bonus for CI
+                × (1 + churn_adjustment)   // 0 by default;
+                                           // +0.15 if churn_ratio > 2.0 AND contributor_count < 3
+                                           // (skip when churn is normal team iteration, not rework)
+                × quality_multiplier       // 0.7 - 1.3 from Step 1c
 ```
 
-Apply to each of P10/P50/P90. Result: **Total Engineering Hours (P10 / P50 / P90)**.
+Apply to P10/P50/P90 each → **Total Engineering Hours (P10 / P50 / P90)**.
 
-The compounded multiplier is typically **1.8x - 2.6x** the base coding time for a real-world project. If your multiplier lands outside that range, double-check.
+Sanity check: the stacked overhead (before `quality_multiplier`) typically falls **1.8×-2.6×** base. Outside that range → investigate.
 
 ---
 
-## Step 5: Market rates
+## Step 6: Market rates
 
-Use WebSearch for **current** rates in the detected stack. Rotate queries:
+Use WebSearch for **current-year** rates. Rotate queries; adapt to detected stack:
 
 - `"senior [primary_language] developer hourly rate 2026"`
 - `"senior [framework] contractor rate 2026 United States"`
-- `"[specialist_domain] developer freelance rate 2026"` (e.g. Rust, CUDA, Solidity, embedded)
-- `"software engineer hourly rate [city] 2026"` for a regional anchor
+- `"[specialist_domain] developer freelance rate 2026"`
+- `"software engineer hourly rate [city] 2026"` for regional anchor
 
-Collect 3-5 data points. Report:
+Collect 3-5 data points. Report regionally:
 
 | Region | Low | Avg | High | Notes |
 |---|---|---|---|---|
-| Remote (global) | ... | ... | ... | LATAM, Eastern Europe, SE Asia |
-| Remote (US) | ... | ... | ... | Mid-tier US markets |
-| SF/NYC onsite | ... | ... | ... | Premium markets |
-| Specialist (e.g. Rust) | ... | ... | ... | Niche skill premium |
+| Remote (global) | | | | LATAM, Eastern Europe, SE Asia |
+| Remote (US) | | | | Mid-tier US markets |
+| SF/NYC onsite | | | | Premium markets |
+| Specialist (e.g. Rust, CUDA, Solidity) | | | | Niche premium |
 
-Pick a **Recommended Rate** and justify it against the detected stack.
+**Fallback** (if WebSearch unavailable or returns obvious rot): use these 2026 anchors and note "rates from skill defaults, not live search":
+
+- Generalist senior: $75-150/hr (US remote), $150-250/hr (SF/NYC), $35-75/hr (offshore)
+- Specialist (Rust, ML infra, GPU, crypto): +30-50%
+
+Pick a **Recommended Rate** with one-sentence justification.
 
 ---
 
-## Step 6: Organizational overhead → calendar time
+## Step 7: Organizational overhead → calendar time
 
 Developers do not code 40 hours per week.
 
 | Company type | Coding efficiency | Focused coding hrs/week |
 |---|---|---|
-| Solo/founder | 65-75% | 26-30 |
+| Solo / founder | 65-75% | 26-30 |
 | Lean startup | 55-65% | 22-26 |
 | Growth company | 45-55% | 18-22 |
 | Enterprise | 35-45% | 14-18 |
 | Large bureaucracy | 25-35% | 10-14 |
 
 ```
-Calendar weeks = Total_Eng_Hours / (40 × efficiency)
-Calendar months = Calendar_weeks / 4.33
+calendar_weeks  = Total_Eng_Hours / (40 × efficiency)
+calendar_months = calendar_weeks / 4.33
 ```
 
-Report across all company types.
+Report across all five company types.
 
 ---
 
-## Step 7: Full team cost
+## Step 8: Full team cost
 
-Engineering doesn't ship alone. Apply role ratios (expressed as fraction of engineering hours) and per-role rates:
+Engineering doesn't ship alone. Role ratios (fraction of engineering hours) and rates:
 
 | Role | Ratio | Typical Rate |
 |---|---|---|
@@ -233,53 +336,49 @@ Engineering doesn't ship alone. Apply role ratios (expressed as fraction of engi
 | Technical Writing | 0.05-0.10 | $75-125/hr |
 | DevOps/Platform | 0.10-0.20 | $125-200/hr |
 
-Team composition by company stage (which roles actually exist):
+Team composition by stage (approx. engineering-cost multipliers):
 
-| Stage | Eng mult. | Who's included |
+| Stage | Multiplier | Staffed roles |
 |---|---|---|
-| Solo/founder | 1.0x | Engineering only |
-| Lean startup | ~1.45x | Eng + light PM/design/DevOps |
-| Growth company | ~2.2x | Full core team (no program mgmt) |
-| Enterprise | ~2.65x | All roles staffed |
+| Solo/founder | 1.0× | Eng only |
+| Lean startup | ~1.45× | Eng + light PM/design/DevOps |
+| Growth company | ~2.2× | Core team, no program mgmt |
+| Enterprise | ~2.65× | All roles |
 
-Compute full-team cost at P50 engineering hours for each stage.
+Compute full-team cost at engineering P50 for each stage.
 
 ---
 
-## Step 8: Claude ROI (churn-aware)
+## Step 9: Claude ROI (session-aware, churn-aware, reviewer-aware)
 
-The headline metric: **"What did each hour of Claude's actual clock time produce?"**
+The headline: **"What did each hour of Claude's actual clock time produce — and what did the user pay in time + money?"**
 
-### 8a. Measure Claude's actual work
+### 9a. Measure Claude active hours (best signal first)
 
-Preferred method — **git churn**:
+**Method 1 (best): Claude Code session logs.** If the project was built with Claude Code, session transcripts live at `~/.claude/projects/<project-hash>/*.jsonl` (the hash is derived from the project path, usually `-<path-with-dashes>`).
 
 ```bash
-# Gross additions and deletions per commit
-git log --numstat --format="COMMIT %H %ai" > /tmp/churn.txt
+# Find the project's Claude session directory
+PROJ_HASH=$(echo "$PWD" | sed 's|/|-|g')
+SESSIONS_DIR=~/.claude/projects/${PROJ_HASH}
+ls -la "$SESSIONS_DIR" 2>/dev/null
 
-# Or summary: total lines added, deleted, net
-git log --numstat --pretty=tformat: \
-  | awk '{adds += $1; dels += $2} END {print "added:", adds, "deleted:", dels, "net:", adds-dels}'
+# Compute total session duration from transcript timestamps
+find "$SESSIONS_DIR" -name "*.jsonl" -exec sh -c '
+  head -1 "$1" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get(\"timestamp\",\"\"))"
+  tail -1 "$1" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get(\"timestamp\",\"\"))"
+' _ {} \; 2>/dev/null
 ```
 
-Use **net additions** (added - deleted) as the "Claude delivered LOC" number, not raw current size. This penalizes rework appropriately.
+If session logs exist, compute `claude_active_hours` as the sum of (last - first timestamp) per session file, capped per session at 6 hours to avoid counting idle time. Flag `method: "session_logs"` in the JSON artifact with high confidence.
 
-### 8b. Cluster commits into sessions
-
-Rule: commits within a **4-hour window** belong to the same session. For each session:
-
-| Commits in window | Estimated session duration |
-|---|---|
-| 1-2 | ~1 hour |
-| 3-5 | ~2 hours |
-| 6-10 | ~3 hours |
-| 11+ | ~4 hours (cap) |
+**Method 2: Git churn + session clustering.** If no session logs, cluster commits within a 4-hour window:
 
 ```bash
 git log --format="%at" --reverse | python3 -c "
-import sys, statistics
+import sys
 times = [int(t) for t in sys.stdin.read().split()]
+if not times: exit()
 sessions, current = [], [times[0]]
 for t in times[1:]:
     if t - current[-1] <= 4*3600:
@@ -287,71 +386,111 @@ for t in times[1:]:
     else:
         sessions.append(current); current = [t]
 sessions.append(current)
-total_h = sum(min(4, max(1, len(s)//3 + 1)) for s in sessions)
-print(f'sessions: {len(sessions)}, est hours: {total_h}')
+
+# Estimate session duration from commit density + span
+total_h = 0
+for s in sessions:
+    span_h = (s[-1] - s[0]) / 3600
+    by_span = max(0.5, min(4, span_h + 0.5))  # span + 30min buffer, clamped 0.5-4h
+    by_density = min(4, 0.5 + 0.3 * len(s))   # 0.5h base + 18min per commit, capped 4h
+    total_h += max(by_span, by_density)
+
+print(f'sessions:{len(sessions)} est_hours:{total_h:.1f}')
 "
 ```
 
-### 8c. Compute the metrics
+Flag `method: "git_clustering"` with medium confidence.
+
+**Method 3: LOC-based fallback.** If no git and no logs, use `net_claude_loc / 350 hrs`. Flag `method: "loc_estimate"` with low confidence.
+
+### 9b. Compute headline metrics
 
 ```
-Value_per_Claude_hour = Total_Cost (P50) / Claude_active_hours
-Speed_multiplier       = Total_Eng_Hours (P50) / Claude_active_hours
-Claude_cost_estimate   = subscription_fee_over_period + API_cost_estimate
-ROI                    = (Total_Cost - Claude_cost) / Claude_cost
+value_per_claude_hour = total_cost_p50 / claude_active_hours
+speed_multiplier      = total_eng_hours_p50 / claude_active_hours
+
+# Honest Claude cost includes USER TIME reviewing/iterating
+reviewer_hours        = claude_active_hours × 0.5    (default; adjust per user)
+reviewer_cost         = reviewer_hours × recommended_rate
+subscription_cost     = $200/mo × calendar_months_of_project  (or actual if known)
+api_cost              = if ~/.claude/projects logs show usage, estimate;
+                        else $0.50 × commit_count as first-pass heuristic
+claude_total_cost     = subscription_cost + api_cost + reviewer_cost
+
+roi                   = (total_cost_p50 - claude_total_cost) / claude_total_cost
 ```
 
-For `Claude_cost_estimate`: use $200/month subscription × calendar months of the project. If the project used API, add a token-based estimate (~$0.10-1.00 per meaningful commit is a reasonable first-pass heuristic, or use recorded usage if available).
+The **reviewer-time inclusion is non-optional** — omitting it overstates ROI by 2-5×. Name the assumption explicitly: "reviewer_time = 0.5× Claude active hours (typical range 0.3-1.0×)."
 
-### 8d. State the limitations loudly
+### 9c. State limitations loudly
 
-In the report, include: "Claude's active-hour estimate is derived from commit clustering. Actual session time may differ by 2-3x. Speed multiplier is a directional indicator, not a benchmark."
+In the report, always include:
+
+> "Claude active hours estimated via *[method]*. Actual session time may differ by ±30% (session logs) or ±2× (git clustering). Reviewer time assumed at 0.5× Claude hours; adjust if you know your ratio. Speed multiplier is directional, not benchmark-grade."
 
 ---
 
-## Step 9: Sensitivity analysis
+## Step 10: Sensitivity & cross-validation
 
-Identify the **single assumption that moves the estimate most**. Typically one of:
+### 10a. Sensitivity analysis — which assumption moves the number most?
 
-- Quality multiplier (0.7 vs 1.3 → ±30%)
-- Company-stage team multiplier (1.0x vs 2.65x → 2.65x spread)
-- Chosen hourly rate (often ±50% range)
-- Specialized-category LOC classification (10-20 hrs/1k vs 30-40 hrs/1k → 3-4x)
+Vary each input one at a time, ±1 standard bucket, and record `p50_impact_usd`:
 
-Report: *"If [assumption] were [X] instead of [Y], the P50 estimate would change by ±$[Z]."* Show the top 2-3 drivers.
+- Quality multiplier: 0.7 → 1.3
+- Recommended rate: ±50%
+- Company stage team multiplier: 1.0 → 2.65×
+- Specialized-category LOC share: ±20%
+- COCOMO EAF bucket: nearest-neighbor shift
+
+Sort descending. Report the **top 3 drivers**.
+
+### 10b. Cross-check (three-way if possible, two-way if no git)
+
+| Method | Hours | Notes |
+|---|---|---|
+| Bottom-up (Step 3+5) | | Category × rate, with overheads |
+| COCOMO II (Step 4) | | Top-down, calibrated constants |
+| Process signal (Step 2c) | | `commits × avg_commit_hours` (skip if no git) |
+
+Rules:
+- **Three signals available** (git present): all agree within 30% → confidence **high**; two agree, one outlier → confidence **medium** (name the outlier); all three disagree → confidence **low**, reconcile before publishing.
+- **Two signals only** (no git): bottom-up + COCOMO. Within 30% → **medium**; >30% divergence → **low**. Never report **high** confidence without a process signal.
 
 ---
 
-## Step 10: Generate the report
+## Step 11: Generate the report
 
-Use this structure. Lead with TL;DR. Detail follows. Caveats close.
+Lead with TL;DR. Detail follows. Caveats + spot-check close.
 
 ---
 
 # [Project Name] — Development Cost Estimate
 
-**Generated**: [date] · **Stack**: [one-line summary] · **Analyst**: Claude (cost-estimate skill)
+**Generated**: [date] · **Stack**: [one-line] · **Strategy**: [micro/small/normal/macro] · **Confidence**: [low/medium/high]
 
 ## TL;DR
 
-- **Counted LOC**: [N] ([N] excluded as generated/vendored)
-- **Engineering hours (P50)**: [N] hrs · P10: [N] · P90: [N]
+- **Counted LOC**: [N] ([N] excluded)
+- **Engineering hours (P50)**: [N] · P10: [N] · P90: [N]
 - **Engineering cost (P50)**: **$[X]** at $[rate]/hr
 - **Full team cost (Growth Co, P50)**: **$[X]**
-- **Calendar time (Lean startup)**: ~[X] months of work
-- **Claude ROI**: ~$[X,XXX] per Claude hour · [X]x faster than human team
+- **Calendar time (Lean startup)**: ~[X] months
+- **Claude ROI**: ~$[X,XXX] per Claude hour · ~[X]× faster than a human team
 
 ## Codebase Metrics
 
 - **Total counted LOC**: [N]
-  - [Language 1]: [N]
-  - [Language 2]: [N]
-  - Tests: [N] ([ratio] of source)
-  - IaC/config: [N]
+  - [Language 1]: [N] · [Language 2]: [N] · …
+  - Tests: [N] ([ratio] of source) · IaC/config: [N]
 - **Excluded**: [N] (generated: [N], vendored: [N], minified: [N], lockfiles: [N])
-- **Quality multiplier**: [X.XX] ([justification])
+- **Quality multiplier**: [X.XX] — [signals: + tests, + types, − no docs, …]
 - **Specialized domains**: [list]
-- **Key integrations**: [list]
+
+## Process Signals (git)
+
+- Project duration: [X] days · Commits: [N] · Contributors: [N]
+- Churn: +[adds] / −[dels] (net +[net]) · churn_ratio: [X.XX]
+- Process-only estimate (cross-check): ~[N] hours
 
 ## Engineering Hours
 
@@ -359,45 +498,44 @@ Use this structure. Lead with TL;DR. Detail follows. Caveats close.
 
 | Category | LOC | Rate (mid) | Hours (P10 / P50 / P90) |
 |---|---|---|---|
-| [Category] | [N] | [X]/hr | [A] / [B] / [C] |
-| ... | ... | ... | ... |
+| … | … | … | … |
 | **Base coding** | **[N]** | | **[A] / [B] / [C]** |
 
-### Overhead multiplier (compounded)
+### Overhead (compounded, double-counting avoided)
 
 | Factor | Value | Running total |
 |---|---|---|
 | Base coding | — | [N] hrs |
-| × Architecture/design (1.15) | +15% | [N] hrs |
-| × Debugging (1.28) | +28% | [N] hrs |
-| ... | ... | ... |
-| × Quality multiplier | [X.XX] | [N] hrs |
+| × Arch/design (1.15) | +15% | [N] |
+| × Debugging (1.28) | +28% | [N] |
+| × … | | |
+| × Quality multiplier | [X.XX] | [N] |
 | **Total engineering** | | **[N] hrs (P50)** |
 
 ### COCOMO II cross-check
 
-- KSLOC = [N/1000]
-- E = [value], EAF = [value]
-- COCOMO estimate: [N] person-months × 152 = **[N] hours**
-- Bottom-up vs COCOMO: **[X%] divergence** → [reconciled number]
+- KSLOC [N], E [V], EAF [V] → **[N] hours**
+- Divergence vs bottom-up: **[X]%** → [reconciled number]
+- Process-signal estimate: [N] hours
+- **Three-way confidence**: [high/medium/low]
 
 ## Calendar Time
 
 | Company type | Efficiency | Calendar months |
 |---|---|---|
-| Solo/founder | 70% | [X] mo |
-| Lean startup | 60% | [X] mo |
-| Growth co | 50% | [X] mo |
-| Enterprise | 40% | [X] mo |
+| Solo / founder | 70% | [X] |
+| Lean startup | 60% | [X] |
+| Growth co | 50% | [X] |
+| Enterprise | 40% | [X] |
 
 ## Market Rates ([year])
 
 | Region | Low | Avg | High |
 |---|---|---|---|
-| Remote (global) | $[X] | $[X] | $[X] |
-| Remote (US) | $[X] | $[X] | $[X] |
-| SF/NYC onsite | $[X] | $[X] | $[X] |
-| [Specialty] | $[X] | $[X] | $[X] |
+| Remote (global) | … | … | … |
+| Remote (US) | … | … | … |
+| SF/NYC onsite | … | … | … |
+| [Specialty] | … | … | … |
 
 **Recommended rate**: **$[X]/hr** — [justification]
 
@@ -411,62 +549,85 @@ Use this structure. Lead with TL;DR. Detail follows. Caveats close.
 | P50 (median) | [N] | $[X] | **$[X]** |
 | P90 (pessimistic) | [N] | $[X] | **$[X]** |
 
-### Full team (P50 engineering)
+### Full team (at P50 engineering)
 
 | Stage | Multiplier | Total cost |
 |---|---|---|
-| Solo/founder | 1.0x | **$[X]** |
-| Lean startup | 1.45x | **$[X]** |
-| Growth company | 2.2x | **$[X]** |
-| Enterprise | 2.65x | **$[X]** |
-
-Role breakdown (Growth Co, P50):
-
-| Role | Hours | Rate | Cost |
-|---|---|---|---|
-| ... | ... | ... | ... |
-| **Total** | **[N]** | | **$[X]** |
+| Solo / founder | 1.0× | **$[X]** |
+| Lean startup | 1.45× | **$[X]** |
+| Growth company | 2.2× | **$[X]** |
+| Enterprise | 2.65× | **$[X]** |
 
 ## Claude ROI
 
-- **Project timeline**: [first commit] → [last commit] ([X] days, [X] calendar weeks)
-- **Git churn**: +[added] / -[deleted] lines (net +[net])
+- **Measurement method**: [session_logs / git_clustering / loc_estimate] — confidence [high/medium/low]
+- **Project timeline**: [first] → [last] ([X] days)
+- **Git churn**: +[adds] / −[dels] (net +[net])
 - **Sessions detected**: [N]
-- **Estimated Claude active hours**: [N] hrs
+- **Claude active hours**: [N]
+- **Reviewer hours (0.5× assumed)**: [N]
 - **Value produced (P50 full-team)**: $[X]
 - **Value per Claude hour**: **$[X,XXX]/hr**
-- **Speed multiplier vs human team**: **[X]x**
-- **Est. Claude cost** (subscription × months + API): $[X]
-- **ROI**: **[X]x** (every $1 spent on Claude → $[X] of value)
+- **Speed multiplier vs human team**: **[X]×**
+- **Claude cost** (subscription + API + reviewer time): $[X]
+- **ROI**: **[X]×** — every $1 on Claude → $[X] of value
 
-> *Claude worked ~[X] hours and produced ~$[X] of professional development value — roughly **$[X,XXX] per Claude hour**.*
+> *Claude worked ~[X] hours; user reviewed ~[X] hours. Combined, they produced ~$[X] of professional development value — roughly **$[X,XXX] per Claude hour**.*
 
-## Sensitivity Analysis
+## Sensitivity
 
-Top drivers of uncertainty:
-1. **[Assumption]**: swinging from [X] to [Y] changes P50 by ±$[Z]
-2. **[Assumption]**: ...
-3. **[Assumption]**: ...
+Top 3 drivers of uncertainty:
+1. **[Assumption]**: swing [X→Y] → P50 changes by ±$[Z]
+2. **[Assumption]**: …
+3. **[Assumption]**: …
+
+## Spot-check (read before trusting the number)
+
+Three things the reader should verify, with a copy-pasteable command for each:
+
+1. **Biggest category is classified correctly.** Show the top-hours category and the files in it — does the label fit?
+   ```bash
+   # Example: if "systems programming" dominated, list those files
+   find . -name "*.rs" -not -path "*/target/*" | head -20
+   ```
+   Commonly over-classified: "systems programming" when it's really just `unsafe` wrappers; "ML/AI" when it's pandas glue.
+
+2. **Excluded-vs-counted ratio is sane.** If `excluded_loc > 3 × counted_loc`, the codebase is mostly vendored/generated — re-run after tightening exclusions.
+   ```bash
+   # Reveal what's big but excluded
+   du -sh node_modules vendor dist build target .venv 2>/dev/null | sort -h
+   ```
+
+3. **Process-vs-code signals agree.** If bottom-up is >2× process estimate, one side is wrong (short git history hides rework, or a one-shot import inflates LOC).
+   ```bash
+   # Show commit density — squash-merged or single-commit imports are red flags
+   git log --oneline | wc -l                     # total commits
+   git log --format="%an" | sort -u | wc -l       # unique contributors
+   git log --format="%ai" | head -1 && git log --format="%ai" | tail -1  # span
+   ```
 
 ## Assumptions & Limitations
 
-- Rates based on [year] market data; will drift.
+- Rates reflect [year] market; drift within ~6 months.
 - Excludes: marketing, sales, legal, compliance, hosting/infra, ongoing maintenance.
-- LOC is a proxy; dense/complex code is undercounted, boilerplate is overcounted.
-- Claude active-hour estimate uses commit clustering; may be off by 2-3x.
-- COCOMO II EAF is an approximation (17 multipliers collapsed to 4 buckets).
-- Full-team costs assume standard org structures; your org may differ.
+- LOC undercounts dense/complex code and overcounts boilerplate.
+- Claude active-hour estimate from [method]; may be off by ±[30%/2×].
+- Reviewer time assumed 0.5× Claude hours; your ratio may differ.
+- COCOMO EAF collapsed from 17 multipliers to 5 buckets; approximate.
+- Full-team costs assume standard org structures.
 
 ---
 
-## Step 11: Write the machine-readable artifact
+## Step 12: Write the machine-readable artifact
 
-Also write a JSON summary to `./cost-estimate.json` for tooling/comparison:
+Write `./cost-estimate.json`:
 
 ```json
 {
-  "schema_version": "1.0",
-  "generated_at": "ISO-8601 timestamp",
+  "schema_version": "1.1",
+  "generated_at": "ISO-8601",
+  "strategy": "micro|small|normal|macro",
+  "confidence": "low|medium|high",
   "project": {
     "name": "...",
     "stack": ["..."],
@@ -476,20 +637,33 @@ Also write a JSON summary to `./cost-estimate.json` for tooling/comparison:
   "codebase": {
     "counted_loc": 0,
     "excluded_loc": { "generated": 0, "vendored": 0, "minified": 0, "lockfiles": 0 },
-    "by_language": { "TypeScript": 0, "Python": 0 },
+    "by_language": {},
     "test_ratio": 0.0,
-    "quality_multiplier": 1.0
+    "quality_multiplier": 1.0,
+    "quality_signals": ["..."]
+  },
+  "process": {
+    "project_duration_days": 0,
+    "commit_count": 0,
+    "contributor_count": 0,
+    "gross_adds": 0,
+    "gross_dels": 0,
+    "net_adds": 0,
+    "churn_ratio": 0.0,
+    "process_only_hours_estimate": 0
   },
   "engineering": {
     "base_coding_hours": { "p10": 0, "p50": 0, "p90": 0 },
     "overhead_multiplier": 1.0,
     "total_hours": { "p10": 0, "p50": 0, "p90": 0 },
     "cocomo_ii_hours": 0,
-    "divergence_pct": 0.0
+    "divergence_pct_bottom_up_vs_cocomo": 0.0,
+    "three_way_agreement": "high|medium|low"
   },
   "rates": {
     "recommended_usd_per_hour": 0,
-    "justification": "..."
+    "justification": "...",
+    "source": "websearch|skill_defaults"
   },
   "cost_engineering_usd": { "p10": 0, "p50": 0, "p90": 0 },
   "cost_full_team_usd": {
@@ -499,24 +673,32 @@ Also write a JSON summary to `./cost-estimate.json` for tooling/comparison:
     "solo": 0, "lean_startup": 0, "growth": 0, "enterprise": 0
   },
   "claude_roi": {
-    "active_hours_est": 0,
-    "value_per_hour_usd": 0,
+    "method": "session_logs|git_clustering|loc_estimate",
+    "method_confidence": "high|medium|low",
+    "claude_active_hours": 0,
+    "reviewer_hours": 0,
+    "claude_total_cost_usd": 0,
+    "value_per_claude_hour_usd": 0,
     "speed_multiplier": 0,
     "roi_multiple": 0
   },
   "sensitivity_drivers": [
     { "assumption": "...", "p50_impact_usd": 0 }
   ],
-  "confidence": "low|medium|high"
+  "spot_check_items": ["...", "...", "..."],
+  "low_confidence_fields": ["..."]
 }
 ```
 
+`low_confidence_fields` is a list of JSON paths (e.g. `["claude_roi.reviewer_hours", "rates.recommended_usd_per_hour"]`) that downstream consumers should display with a warning icon.
+
 ---
 
-## Notes
+## Notes to self
 
-- Keep language professional and concise; this report may be shared with stakeholders.
-- Always show your math: the reader should be able to audit every number back to a LOC count and a rate.
-- If any step's data is unavailable (e.g., no git history), degrade gracefully and lower the `confidence` field accordingly.
-- For multi-service monorepos, break down the bottom-up estimate per service and aggregate.
-- Never present a single dollar figure without its surrounding range.
+- **Show your math.** Every number in the report must be traceable to a LOC count and a rate.
+- **Never publish a single dollar figure without its range.**
+- **Two-sig-figs rule**: round to two significant figures unless you can defend more.
+- **Degrade gracefully.** Missing git? Note it, lower confidence, continue. Missing WebSearch? Use skill defaults, note it.
+- **Decompose macros.** For monorepos, estimate each service separately and sum.
+- **Don't double-count.** Quality bonuses and overhead reductions live on the same axis — pick one or split them.

@@ -2,7 +2,7 @@
 
 A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that analyzes any codebase and estimates what it would have cost to build with a traditional human team — no AI, just developers, designers, PMs, and meetings.
 
-Open Claude Code in any project, run `/cost-estimate`, and get a full breakdown — with ranged estimates (P10/P50/P90), a COCOMO II cross-check, current market rates, realistic team costs, and a churn-aware Claude ROI number. Also writes a machine-readable `cost-estimate.json` artifact.
+Open Claude Code in any project, run `/cost-estimate`, and get a full breakdown — with ranged estimates (P10/P50/P90), a size-aware playbook, git-process-signal cross-check, COCOMO II top-down sanity check, current market rates, realistic team costs, and a session-aware, reviewer-honest Claude ROI number. Also writes a machine-readable `cost-estimate.json` artifact.
 
 ## Example Output
 
