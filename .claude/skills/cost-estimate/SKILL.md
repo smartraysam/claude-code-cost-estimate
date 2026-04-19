@@ -810,11 +810,15 @@ Quoting this number as "what the code is worth" is a category error that has bur
 - **Sessions detected**: [N]
 - **Claude active hours**: [N]
 - **Reviewer hours (0.5× assumed)**: [N]
+- **Plan**: [max / pro / api / unknown]
+- **Claude tokens cost (if it were done via API)**: $[X] — *counterfactual only; computed from `message.usage` × published per-token rates. If you're on Max/Pro, this is NOT what you paid.*
+- **Actual cash paid to Anthropic**: $[X] — flat subscription if on a plan, metered bill if on API
+- **Effective plan savings** (equivalent API − actual cash): $[X] — positive = subscription paid off
 - **Value produced (P50 full-team)**: $[X]
 - **Value per Claude hour**: **$[X,XXX]/hr**
 - **Speed multiplier vs human team**: **[X]×**
-- **Claude cost** (subscription + API + reviewer time): $[X]
-- **ROI**: **[X]×** — every $1 on Claude → $[X] of value
+- **Total Claude investment** (actual cash + reviewer time): $[X]
+- **ROI**: **[X]×** — every $1 you actually spent → $[X] of human-equivalent value
 
 > *Claude worked ~[X] hours; user reviewed ~[X] hours. Combined, they produced ~$[X] of professional development value — roughly **$[X,XXX] per Claude hour**.*
 
