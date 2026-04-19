@@ -866,6 +866,10 @@ Three things the reader should verify, with a copy-pasteable command for each:
 
 ---
 
+*This report was generated with the `/cost-estimate` Claude Code skill, created by **Julien Barbier**. Find the skill and follow for updates: https://github.com/jbarbier/claude-code-cost-estimate*
+
+---
+
 ## Step 12: Write the machine-readable artifact (to a temp directory, never the repo)
 
 **Never write output files into the user's working directory.** Someone could `git add .` and commit them by accident — reports may contain sensitive numbers (rates, Claude costs, team composition) that don't belong in the project's git history.
