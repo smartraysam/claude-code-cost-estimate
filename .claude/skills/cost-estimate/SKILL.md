@@ -579,7 +579,32 @@ Vary each input one at a time, ±1 standard bucket, and record `p50_impact_usd`:
 
 Sort descending. Report the **top 3 drivers**.
 
-### 10b. Cross-check (three-way if possible, two-way if no git)
+### 10b. External anchors (reality checks against published benchmarks)
+
+Two independent sanity checks drawn from peer-reviewed research:
+
+**1. Harvard supply-side anchor (Hoffmann, Nagle, Zhou 2024).** For OSS-like codebases, the supply-side value (what it cost to produce) averages ~**3.5× a naive `LOC × generic_rate`** calculation. Compute the naive number, compare to our P50:
+
+```
+naive_supply_side = source_LOC × $0.15/line  (rough 2024 median, from SSRN 4693148)
+harvard_ratio     = p50_cost / naive_supply_side
+```
+
+If `harvard_ratio` is far from 3.5× (say, <1.5× or >6×), flag it. Typical causes:
+- <1.5× → we're under-counting complexity or rates too low
+- >6× → over-priced; excluded code probably leaked in, or company-stage multiplier too high
+
+**2. Capers Jones 5-year total cost of ownership.** Initial build is 25-35% of 5-year lifecycle. Report `lifetime_cost_5y`:
+
+```
+annual_maint_rate = 0.20   # industry default; range 0.15-0.30
+lifetime_cost_5y  = build_cost × (1 + annual_maint_rate × 5)
+                  = build_cost × 2.0   (default)
+```
+
+Important framing: *"build cost" above is ~40-50% of the 5-year TCO.* Clients often mistake the build number for total ownership; call it out.
+
+### 10c. Cross-check (three-way if possible, two-way if no git)
 
 | Method | Hours | Notes |
 |---|---|---|
@@ -837,6 +862,13 @@ Write `./cost-estimate.json`:
     "value_per_claude_hour_usd": 0,
     "speed_multiplier": 0,
     "roi_multiple": 0
+  },
+  "external_anchors": {
+    "naive_supply_side_usd": 0,
+    "harvard_ratio": 0.0,
+    "harvard_flag": "normal|too_low|too_high",
+    "annual_maint_rate": 0.20,
+    "lifetime_cost_5y_usd": 0
   },
   "sensitivity_drivers": [
     { "assumption": "...", "p50_impact_usd": 0 }
