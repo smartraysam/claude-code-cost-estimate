@@ -104,8 +104,6 @@ Limitations it acknowledges in every report:
 
 This skill is an expanded version of the original idea by **Todd Saunders** ([@toddsaunders](https://x.com/toddsaunders) on Twitter/X).
 
-Original post: [https://x.com/toddsaunders/status/2029594318361571497](https://x.com/toddsaunders/status/2029594318361571497?s=20)
-
 ## License
 
 MIT
