@@ -249,6 +249,41 @@ Compare COCOMO to Step 3:
 
 ---
 
+## Step 4b: LOCOMO — LLM-regeneration cost (counterfactual)
+
+COCOMO answers "what did humans cost to build this?". LOCOMO (popularised by `scc`) answers the counterfactual: **"what would it cost an LLM to re-generate this from spec today?"** — a useful floor for Claude-ROI discussions.
+
+```
+tokens_per_loc        ≈ 4           # empirical: ~4 tokens per line of code for generation
+iteration_factor      = 3           # typical: 3 generation passes before acceptance
+input_prompt_overhead = 2           # spec + context tokens per code token
+regen_tokens          = SLOC × tokens_per_loc × (1 + input_prompt_overhead) × iteration_factor
+
+# Claude rates (Opus 4.7, 2026-04): input $15/Mtok, output $75/Mtok; assume 10% input / 90% output
+api_cost = regen_tokens × (0.1 × 15 + 0.9 × 75) / 1_000_000   # ≈ $0.069 per token mix
+
+# Human review time to accept LLM output
+review_hours          = SLOC / 1000   # ~1 hr per KLOC to read/accept generated code
+review_cost           = review_hours × recommended_rate
+
+locomo_cost_usd       = api_cost + review_cost
+locomo_hours          = review_hours          # the only *human* hours LOCOMO implies
+```
+
+**Report three numbers side by side** in the final output:
+
+| Method | Hours | USD | Interpretation |
+|---|---|---|---|
+| COCOMO II (top-down, human) | [H1] | [$1] | Traditional human build cost |
+| Bottom-up (Step 3+5) | [H2] | [$2] | Category-rate, human build cost |
+| **LOCOMO (LLM regen + review)** | [H3] | [$3] | **Floor: what re-generating costs today** |
+
+The ratio `COCOMO_cost / LOCOMO_cost` is a "human premium" multiple. If a codebase costs $500k by COCOMO and $15k by LOCOMO, the **33× human premium** is where Claude ROI actually comes from; flag it explicitly in the Claude ROI section.
+
+Caveats: LOCOMO assumes a complete spec exists (it usually doesn't); it ignores novel-problem effort; it undercounts domains where correctness is load-bearing (crypto, embedded, safety-critical). Never publish LOCOMO *alone* — only alongside COCOMO and bottom-up.
+
+---
+
 ## Step 5: Overhead multipliers (compounding, no double-count)
 
 Apply **multiplicatively** and follow this rule: **if a quality signal already bumped per-LOC value in Step 1c, reduce the related overhead rate to the low end** to avoid double counting.
@@ -659,6 +694,14 @@ Write `./cost-estimate.json`:
     "cocomo_ii_hours": 0,
     "divergence_pct_bottom_up_vs_cocomo": 0.0,
     "three_way_agreement": "high|medium|low"
+  },
+  "locomo": {
+    "regen_tokens": 0,
+    "api_cost_usd": 0,
+    "review_hours": 0,
+    "review_cost_usd": 0,
+    "locomo_cost_usd": 0,
+    "human_premium_multiple": 0.0
   },
   "rates": {
     "recommended_usd_per_hour": 0,
