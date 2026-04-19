@@ -704,11 +704,12 @@ Quoting this number as "what the code is worth" is a category error that has bur
 ## TL;DR
 
 - **Counted LOC**: [N] ([N] excluded)
-- **Engineering hours (P50)**: [N] · P10: [N] · P90: [N]
-- **Engineering cost (P50)**: **$[X]** at $[rate]/hr
-- **Full team cost (Growth Co, P50)**: **$[X]**
-- **Calendar time (Lean startup)**: ~[X] months
-- **Claude ROI**: ~$[X,XXX] per Claude hour · ~[X]× faster than a human team
+- **Human-team hours (P50)**: [N] · P10: [N] · P90: [N]
+- **Pre-AI rebuild cost — engineering only (P50)**: **$[X]** at $[rate]/hr
+- **Pre-AI rebuild cost — full human team (Growth Co, P50)**: **$[X]**
+- **Calendar time if a human team rebuilt it (Lean startup)**: ~[X] months
+- **Actual Claude cost (from session logs)**: **$[Y]** · see ROI section for multiple
+- **Pre-AI ÷ actual-AI cost ratio**: [X]× (*i.e. what a human team would have charged vs what Claude actually spent*)
 
 ## Codebase Metrics
 
