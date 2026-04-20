@@ -133,19 +133,25 @@ Quoting this number as "what the code is worth" is a category error that has bur
 
 ### Parallel Execution Profile
 
-*Fill this whenever `peak_concurrent_sessions >= 2`. The numbers tell the user how they compare to the rest of the Claude Code market.*
+*Fill this whenever `peak_concurrent_sessions >= 2`. Use the evidence-based anchors below — do NOT invent tiers.*
 
-This project was built with **[peak] Claude Code windows concurrently at peak** (avg **[avg_concurrency]×** simultaneous), spending **[operator_hours_union]** real keyboard hours to produce **[active_hours_capped6]** hours of Claude compute work. For context:
+This project was driven at **[peak] Claude Code windows concurrently at peak** (avg **[avg_concurrency]×** simultaneous), with **[operator_hours_union]** real keyboard hours producing **[active_hours_capped6]** hours of Claude compute work. Mode: **[interactive_parallel / advanced_interactive / async_swarm]**.
 
-| Workflow | Typical speed multiplier | Description |
+**Evidence-based anchors (all measured 2024 – 2026):**
+
+| Anchor | Measurement | Source |
 |---|---|---|
-| GitHub Copilot baseline (SPACE 2024) | 1.55× | Solo developer, inline autocomplete, reviewing every suggestion |
-| Single-window Claude Code (autonomous) | 3 – 10× | Developer letting Claude run tool-use loops between reviews |
-| **Power-user (2 – 4 parallel)** | **10 – 40×** | Developer as traffic controller, spot-reviewing multiple streams |
-| Advanced orchestrator (5 – 7 parallel) | 40 – 80× | Most cognitive work is queue management |
-| Top-percentile expert (8 – 10 parallel) | 80 – 150× | Observed in the highest-productivity Claude Code users |
+| Copilot inline autocomplete (SPACE 2024) | 1.55× at concurrency 1 | CACM 2024 RCT |
+| METR median Claude Code user | 3 – 5× at 1.2 – 1.4 avg parallel | [METR Feb 2026 transcript study](https://metr.org/notes/2026-02-17-exploratory-transcript-analysis-for-estimating-time-savings-from-coding-agents/), n=7 |
+| METR top Claude Code user | **11.6× at 2.32 avg parallel** (11.3 hrs/day) | Same study, Technical Staff A |
+| METR observed range | 2.1 – 11.6× at 1.05 – 2.32 avg | Seven Anthropic-adjacent engineers |
+| Anthropic C-compiler (Carlini) | 1 human + 16 parallel + 2 weeks = 100k LOC for $20k | [anthropic.com/engineering/building-c-compiler](https://www.anthropic.com/engineering/building-c-compiler) — existence proof for async swarm, not a per-hour rate |
 
-This user's **operator-hour speed multiplier of [X]×** sits in the **[tier]** band — [contextual sentence: "exactly where a [tier] user should be" / "higher than the typical [tier] range, worth spot-checking" / "extraordinary — this is how the 99th-percentile workflow looks"].
+**How your number compares:**
+
+This user's **operator-hour multiplier is [X]×** against the full-team rebuild estimate (includes PM/design/QA overhead ~2.53×). The apples-to-apples **per-developer-equivalent multiplier is [X/2.53]×** — that's the number to compare to METR. At [avg_concurrency]× avg concurrency, METR's observed band is roughly [interpolated]; this user's per-dev-equivalent sits **[inside / above / well above]** that band.
+
+> *Caveats: METR measured time-to-complete identical tasks; this skill measures hypothetical-rebuild-cost vs actual session time — different numerators. LOC-dense codebases (scrapers, boilerplate, generated-style code) inflate the multiplier above what METR observes for complex novel work. Don't quote either multiplier as universal. Your workflow and codebase shape the ratio as much as the tools do.*
 
 ## Sensitivity
 

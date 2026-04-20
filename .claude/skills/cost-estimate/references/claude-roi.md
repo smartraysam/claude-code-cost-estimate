@@ -5,7 +5,7 @@ Headline: **"What did each hour of Claude's actual clock time produce — and wh
 ## Contents
 1. Measure Claude active hours + operator hours + parallel windows
 2. Compute headline metrics
-3. Speed-multiplier sanity check (parallel-aware, with market benchmarks)
+3. Speed-multiplier sanity check — evidence-based, not vibes
 4. Parallel Execution Profile paragraph (goes in the report)
 5. Loudly stated limitations
 
@@ -20,21 +20,19 @@ Session transcripts live at `~/.claude/projects/<project-hash>/*.jsonl` where th
 Run `scripts/claude_token_cost.py` — one script emits **all** of:
 
 - **Token usage + API cost**: ground-truth `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens` per message × published per-model rates.
-- **`active_hours_capped6`** — sum of `(last - first)` per session file, capped 6h/session. This is *Claude compute throughput* (adds up even when sessions overlap).
+- **`active_hours_capped6`** — sum of `(last - first)` per session file, capped 6h/session. *Claude compute throughput* (adds up even when sessions overlap).
 - **`active_hours_uncapped`** — same sum without the cap; used for sanity.
-- **`operator_hours_union`** — wall-clock UNION of all session intervals. This is *real human driver time* — the hours the user actually sat at the keyboard.
+- **`operator_hours_union`** — wall-clock UNION of all session intervals. *Real human driver time* — hours the user actually sat at the keyboard.
 - **`peak_concurrent_sessions`** — max simultaneous Claude Code windows.
-- **`avg_concurrency`** = `active_hours_uncapped / operator_hours_union` — how many windows the user averaged in parallel.
+- **`avg_concurrency`** = `active_hours_uncapped / operator_hours_union`.
 
-Flag `method: "session_logs"` and `api_cost_source: "session_logs"` in the artifact — high confidence.
+Flag `method: "session_logs"` — high confidence.
 
-### Method 2: Git churn + session clustering
+### Method 2: Git churn + session clustering (fallback, medium confidence, ±2×)
+Run `scripts/git_session_clustering.py`. No concurrency signal in this mode.
 
-If no session logs exist, run `scripts/git_session_clustering.py`. Emits a single session-hour estimate, no concurrency data. Flag `method: "git_clustering"` — medium confidence (±2×).
-
-### Method 3: LOC-based fallback
-
-If no git and no logs, use `net_claude_loc / 350 hrs`. Flag `method: "loc_estimate"` — low confidence.
+### Method 3: LOC heuristic (final fallback, low confidence)
+`net_claude_loc / 350 hrs`.
 
 ---
 
@@ -49,91 +47,109 @@ speed_multiplier_compute  = total_eng_hours_p50 / active_hours_capped6
 # Operator leverage — what one human produced per real keyboard-hour
 speed_multiplier_operator = total_eng_hours_p50 / operator_hours_union
 
-# These diverge when the user runs parallel Claude windows:
+# These diverge when the user runs parallel windows:
 # speed_multiplier_operator = speed_multiplier_compute × avg_concurrency
 ```
 
-Report **both** in the table — `speed_multiplier_operator` is usually the honest number for ROI comparisons because it's the one the user's wallet feels.
+Report **both**. `speed_multiplier_operator` is the honest ROI number (the one the user's wallet feels); `speed_multiplier_compute` benchmarks AI throughput.
+
+**Per-developer-equivalent multiplier** (for honest comparison with published benchmarks):
 
 ```
-value_per_claude_hour = total_cost_p50 / active_hours_capped6
-value_per_operator_hour = total_cost_p50 / operator_hours_union
+# The bottom-up P50 includes team overhead (~2.53× above base coding for debug/docs/review/test).
+# Published benchmarks measure solo-developer speed, not team-rebuild cost. Divide it out:
+per_dev_speed_multiplier = speed_multiplier_operator / overhead_multiplier
+```
 
-# Reviewer time (critical for honesty)
+This is the apples-to-apples number for comparing against METR or Copilot. Report it alongside the headline multiplier.
+
+```
+# Reviewer time
 reviewer_hours  = operator_hours_union × reviewer_ratio
 # reviewer_ratio defaults:
-#   single-window interactive usage: 0.5  (user reviews code after Claude writes it)
-#   parallel windows (peak_concurrent >= 2): 0.2-0.3
-#     (the operator IS the reviewer-in-loop while supervising multiple streams;
-#      reviewer effort is already embedded in operator_hours_union)
-#   delegated long-running agents (peak >= 5, low per-session attention): 0.1
+#   single-window interactive: 0.5
+#   parallel windows (peak_concurrent >= 2): 0.2 - 0.3
+#   async swarm (Carlini-style, peak >= 10, mostly hands-off): 0.05 - 0.1
 reviewer_cost   = reviewer_hours × recommended_rate
 
 # Two DIFFERENT numbers — never add them together
-equivalent_api_spend = sum(tokens × published_rates)       # counterfactual per-token bill
-actual_cash_paid     = depends on plan:
-                         - Claude Max:    $200/mo × calendar_months  (flat)
-                         - Claude Pro:    $20/mo  × calendar_months
-                         - API (metered): equivalent_api_spend (the number IS the bill)
-                         - Unknown:       report both, let the reader pick
+equivalent_api_spend = sum(tokens × published_rates)      # counterfactual per-token bill
+actual_cash_paid     = Max $200/mo | Pro $20/mo | API = the bill itself
 
 claude_total_cost = actual_cash_paid + reviewer_cost
-
 roi = (total_cost_p50 − claude_total_cost) / claude_total_cost
 ```
 
-**Reviewer-time inclusion is non-optional** — omitting it overstates ROI. For parallel-window users, tune `reviewer_ratio` down from 0.5 (the single-window default) because `operator_hours_union` already captures all the time the human spent supervising. Name the chosen ratio explicitly in the report.
-
 ---
 
-## 3. Speed-multiplier sanity check — parallel-aware
+## 3. Speed-multiplier sanity check — evidence-based anchors
 
-The 2024 GitHub Copilot SPACE study ([*Measuring GitHub Copilot's Impact on Productivity*, CACM 2024](https://cacm.acm.org/)) measured a **1.55× speed multiplier** with Copilot. That study pattern is **solo human + inline autocomplete, reviewer-in-loop at the keystroke level** — fundamentally different from Claude Code executing autonomously across tool use with parallel windows. Use it as the floor anchor, not the ceiling.
+Two distinct workflows with different ceilings. Classify the user's mode first, **then** apply the right anchors.
 
-Tier the sanity gate by `peak_concurrent_sessions`, because parallelism legitimately multiplies the honest multiplier:
+### 3a. Interactive parallel (driver at keyboard, spot-reviewing multiple active windows)
 
-| Peak concurrent | Typical `speed_multiplier_operator` | Interpretation |
+This is what most Claude Code users do. The public data:
+
+| Anchor | Speed multiplier | Concurrency | Source |
+|---|---|---|---|
+| GitHub Copilot SPACE study | 1.55× | 1 (inline autocomplete, keystroke review) | *Measuring GitHub Copilot's Impact on Productivity*, CACM 2024 |
+| METR median Claude Code user | 3 – 5× | 1.2 – 1.4 avg | METR 2026 transcript analysis, n=7 |
+| METR top Claude Code user | **11.6×** | **2.32 avg** (11.3 hrs/day) | Same study, Technical Staff A |
+| METR full observed range | 2.1× – 11.6× | 1.05 – 2.32 avg | Seven Anthropic-adjacent engineers |
+
+Ceiling for interactive parallel: **~12× per-developer-equivalent** is the highest directly-observed number in the public record as of 2026. Higher numbers usually mean the denominator is wrong (team overhead included, LOC-heavy boilerplate inflating base-coding estimate, sessions uncounted).
+
+### 3b. Async orchestration (set up harness, walk away)
+
+Rare, project-scale workflow. One published data point:
+
+| Anchor | Scale | Source |
 |---|---|---|
-| 1 (single window) | 1.5 – 3× | Copilot-style, reviewer-in-loop |
-| 1 (autonomous agent mode) | 3 – 10× | Claude Code autonomous tool use on a well-scoped task |
-| 2 – 4 (typical power user) | 10 – 40× | Developer juggling a few concurrent streams; most Claude Code users sit here |
-| 5 – 7 (advanced) | 40 – 80× | "Orchestrator mode" — user is a traffic controller for multiple autonomous agents |
-| 8 – 10 (expert) | 80 – 150× | Top-percentile workflow observed among the most productive Claude Code users |
-| > 10 | 150×+ | Rare; verify `operator_hours_union` and spot-check commits |
+| Nicholas Carlini / Anthropic C compiler | 1 human, 16 parallel Claudes, ~2,000 sessions, 2 weeks, $20k API, **100k LOC** | *Building a C compiler with a team of parallel Claudes*, anthropic.com/engineering |
+
+Carlini measured in **project-deliverables-per-scaffolding-week**, not per-hour-at-keyboard. His human time was mostly upfront harness design + periodic intervention; he "mostly walked away" between checkpoints. A speed multiplier in conventional units isn't published. Use this as an existence proof ("solo human + well-chosen task + async swarm can produce 100k LOC in 2 weeks"), not as a per-hour benchmark.
+
+### 3c. Gate
 
 ```
-expected_max = 15 × max(peak_concurrent_sessions, 1)   # rough upper honest bound
-if speed_multiplier_operator > 3 × expected_max:
-    sanity_flag = "implausible"       # likely a measurement bug
-elif speed_multiplier_operator > expected_max:
-    sanity_flag = "suspicious"         # outlier — spot-check a sample commit
-else:
-    sanity_flag = "plausible"
+# Classify mode
+if peak_concurrent <= 1:                        mode = "single_window"
+elif peak_concurrent <= 4 and avg < 3:          mode = "interactive_parallel"
+elif peak_concurrent <= 10 and avg < 5:         mode = "advanced_interactive"
+else:                                            mode = "async_swarm"
+
+# For interactive modes, compare per_dev_speed_multiplier to METR's ceiling
+if mode in ("single_window", "interactive_parallel", "advanced_interactive"):
+    if per_dev_speed_multiplier > 25:    sanity_flag = "implausible"   # 2× above METR top
+    elif per_dev_speed_multiplier > 12:  sanity_flag = "suspicious"     # above METR ceiling
+    else:                                 sanity_flag = "plausible"
+
+# For async swarm, no apples-to-apples benchmark exists in the public record
+elif mode == "async_swarm":
+    sanity_flag = "no_benchmark"
+    # Report as "Carlini-style async orchestration — no direct public benchmark; compare
+    # to his 100k LOC / 2 weeks / 1 human as an existence-proof anchor"
 ```
 
-When `sanity_flag != "plausible"`, the report must explicitly say which metric (`operator_hours_union`, LOC inflation, category misclassification) to verify.
+When `sanity_flag != "plausible"`, the report must explicitly name the metric to verify (operator_hours, team-overhead denominator, LOC inflation).
 
 ---
 
 ## 4. Parallel Execution Profile paragraph (goes in the report)
 
-The report template includes a dedicated *Parallel Execution Profile* paragraph that the model **must** fill in whenever `peak_concurrent_sessions >= 2`. Shape it like this:
+Fill this in whenever `peak_concurrent_sessions >= 2`. Show the user where the evidence places them — don't invent tiers.
 
-> **Parallel Execution Profile.** Across the project, the user drove **[peak]** Claude Code windows concurrently at peak (avg **[avg_concurrency]×** simultaneous), spending **[operator_hours_union]** real keyboard hours to produce **[active_hours_capped6]** hours of Claude compute work. For context:
+> **Parallel Execution Profile.** This project was driven at **[peak]** Claude Code windows concurrently at peak (avg **[avg_concurrency]×** simultaneous), with **[operator_hours_union]** real keyboard hours producing **[active_hours_capped6]** hours of Claude compute work. Mode: **[interactive_parallel / advanced_interactive / async_swarm]**.
 >
-> - **GitHub Copilot baseline (2024 SPACE study)**: 1.55× — a solo developer with inline autocomplete, reviewing every suggestion at the keystroke level.
-> - **Single-window Claude Code (autonomous agent mode)**: ~3 – 10× — one developer letting Claude run tool-use loops between reviews.
-> - **Typical Claude Code power-user (this user, at [peak] parallel)**: ~10 – 40× — the developer becomes a traffic controller, spot-reviewing multiple streams instead of gating each keystroke.
-> - **Top-percentile workflows (7 – 10 concurrent windows)**: ~80 – 150× — observed in the highest-productivity Claude Code users, where most cognitive work is queue management and final-pass review.
+> **Evidence-based anchors (all measured 2024 – 2026):**
 >
-> This user's **operator-hour speed multiplier of [X]×** sits in the **[tier]** band — [contextual sentence: "exactly where a [tier] user should be" / "higher than the typical [tier] range, worth spot-checking" / "extraordinary — this is how the 99th-percentile workflow looks"].
-
-Calibrate the "tier" phrasing on `peak_concurrent_sessions`:
-- 1 → "single-window autonomous-agent"
-- 2 – 4 → "power-user"
-- 5 – 7 → "advanced orchestrator"
-- 8 – 10 → "top-percentile expert"
-- 11+ → "off-the-chart"
+> - **GitHub Copilot inline autocomplete (SPACE 2024)**: 1.55× — solo developer, review every suggestion at the keystroke level.
+> - **METR Claude Code transcript study (Feb 2026, n=7 Anthropic-adjacent engineers)**: median 3 – 5× at 1.2 – 1.4 avg concurrency; top user 11.6× at 2.32 avg concurrency (working 11.3 hr/day).
+> - **Anthropic C-compiler experiment (Carlini, 2026)**: one human + 16 parallel Claudes + 2 weeks = 100k LOC compiler for $20k API — the published "async swarm" anchor. Not directly comparable in per-hour terms; reported as an existence-proof for solo-human + well-scoped parallel task.
+>
+> This user's **operator-hour multiplier is [X]×** against the full-team rebuild estimate (includes PM/design/QA overhead ~2.53×). The apples-to-apples **per-developer-equivalent multiplier is [X/2.53]×**, which is the number to compare to METR. At [avg_concurrency]× concurrency, METR's observed range is roughly [interpolated from the 1.05–2.32 band above]; this user's per-dev-equivalent sits **[inside / above / well above]** that range.
+>
+> Caveats: METR measured time-to-complete identical tasks; this skill measures hypothetical-rebuild-cost vs actual session time. The numerators are different, and LOC-dense codebases (scrapers, boilerplate, generated-style code) inflate the multiplier above what METR observes for complex novel work. Don't quote either multiplier as universal.
 
 ---
 
@@ -141,4 +157,4 @@ Calibrate the "tier" phrasing on `peak_concurrent_sessions`:
 
 Always include:
 
-> "Claude active hours estimated via *[method]*. Actual session time may differ by ±30% (session logs) or ±2× (git clustering). Reviewer time assumed at [ratio]× operator hours; adjust if you know your ratio. Speed multipliers are directional — the operator-hour metric is the honest one for ROI comparisons; the compute-hour metric is the one to quote when benchmarking AI throughput."
+> "Claude active hours from *[method]*. Reviewer time assumed at [ratio]× operator hours (tuned for [peak] parallel windows). Operator-hour multiplier is vs the full-team rebuild estimate; per-developer-equivalent is the apples-to-apples number for METR/Copilot comparison. METR's public range (Feb 2026, n=7) is 2.1 – 11.6× per developer at 1.05 – 2.32 avg concurrency."
