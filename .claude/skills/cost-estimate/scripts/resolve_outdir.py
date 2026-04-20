@@ -6,10 +6,12 @@ if needed. Never writes inside the user's working tree — reports can
 contain sensitive numbers (rates, costs, team composition) that should
 not land in a git commit by accident.
 
-Typical paths:
+Typical paths (all use forward slashes in this skill's authored docs —
+Windows clients display them with backslashes, but pathlib handles the
+translation transparently):
   Linux   → /tmp/cost-estimate/<project>/
   macOS   → /var/folders/.../T/cost-estimate/<project>/
-  Windows → %TEMP%\\cost-estimate\\<project>\\
+  Windows → %TEMP%/cost-estimate/<project>/
 """
 import os
 import pathlib

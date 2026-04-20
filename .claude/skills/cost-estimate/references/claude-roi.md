@@ -97,7 +97,7 @@ This is what most Claude Code users do. The public data:
 | METR top Claude Code user | **11.6×** | **2.32 avg** (11.3 hrs/day) | Same study, Technical Staff A |
 | METR full observed range | 2.1× – 11.6× | 1.05 – 2.32 avg | Seven Anthropic-adjacent engineers |
 
-Ceiling for interactive parallel: **~12× per-developer-equivalent** is the highest directly-observed number in the public record as of 2026. Higher numbers usually mean the denominator is wrong (team overhead included, LOC-heavy boilerplate inflating base-coding estimate, sessions uncounted).
+Ceiling for interactive parallel: **~12× per-developer-equivalent** — the highest directly-observed number in the public record, per the METR study cited above. Higher numbers usually mean the denominator is wrong (team overhead included, LOC-heavy boilerplate inflating base-coding estimate, sessions uncounted).
 
 ### 3b. Async orchestration (set up harness, walk away)
 
