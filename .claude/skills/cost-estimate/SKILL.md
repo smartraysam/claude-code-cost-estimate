@@ -279,13 +279,21 @@ Two DIFFERENT cost numbers — never add them together:
 - `equivalent_api_spend` = counterfactual per-token bill
 - `actual_cash_paid` = Max ($200/mo × months) | Pro ($20/mo × months) | API (the bill itself)
 
-### 9c. Speed-multiplier sanity check — parallel-aware
+### 9c. Speed-multiplier sanity check — evidence-based anchors
 
-The gate is tiered by `peak_concurrent_sessions` (see `references/claude-roi.md` section 3). Single-window autonomous Claude Code legitimately runs at 3 – 10× (vs Copilot's 1.55× inline-autocomplete baseline); each additional parallel window is a ~1× multiplier on top. Expected honest ceiling: `~15 × peak_concurrent`. Flag only if the operator-hour multiplier exceeds 3× that ceiling.
+Compare the **per-developer-equivalent multiplier** (`speed_multiplier_operator / overhead_multiplier`) against published benchmarks — see `references/claude-roi.md` section 3 for anchors and the full gate:
 
-### 9d. Parallel Execution Profile paragraph — REQUIRED in the report when `peak_concurrent >= 2`
+- GitHub Copilot SPACE 2024: 1.55× (solo autocomplete)
+- METR Feb 2026 transcript study (n=7): range **2.1 – 11.6×** at concurrency 1.05 – 2.32; top user 11.6× at 2.32 avg
+- Anthropic C compiler (Carlini, solo + 16 async): existence proof, not a per-hour rate
 
-Fill in the *Parallel Execution Profile* paragraph in the report template with the user's peak, avg concurrency, operator hours, compute hours, and the tier-appropriate market comparison (Copilot 1.55× / single-window 3-10× / power-user 2-4 windows at 10-40× / advanced 5-7 at 40-80× / expert 7-10 at 80-150×). See the reference for the exact wording.
+Gate: `per_dev_equivalent > 25×` = implausible; `> 12×` = suspicious (above METR ceiling); else plausible. For async swarm mode (peak ≥ 10), report as "no_benchmark" — Carlini is the only public anchor and isn't a per-hour rate.
+
+### 9d. Parallel Execution Profile paragraph — REQUIRED when `peak_concurrent >= 2`
+
+Copy the template from `assets/report-template.md` (the *Parallel Execution Profile* block). Fill in peak, avg concurrency, operator/compute hours, operator-hour multiplier, per-developer-equivalent multiplier, and the contextual sentence placing the user relative to METR's observed band.
+
+**Never invent tiers.** The only tiers in the report are the ones traceable to cited studies (METR, Copilot SPACE, Carlini). If the user's per-dev-equivalent exceeds METR's 11.6× ceiling, the paragraph must say so plainly and offer the two honest explanations (codebase shape inflates rebuild estimate; n=7 sample is small), not dress it up as "top-percentile expert".
 
 ### 9e. State limitations loudly
 
